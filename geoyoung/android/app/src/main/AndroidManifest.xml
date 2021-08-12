@@ -16,10 +16,9 @@
             android:launchMode="singleTop"
             android:theme="@style/LaunchTheme"
             android:resizeableActivity="true"
-android:supportsPictureInPicture="true"
-android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|
+            android:supportsPictureInPicture="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|
 layoutDirection|fontScale|screenLayout|density|smallestScreenSize|orientation"
-        
             android:hardwareAccelerated="true"
             android:windowSoftInputMode="adjustResize">
             <!-- Specifies an Android theme to apply to this Activity as soon as

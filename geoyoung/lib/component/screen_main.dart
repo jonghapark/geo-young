@@ -6,6 +6,7 @@ import 'package:flutter_ble_lib/flutter_ble_lib.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:geoyoung/models/model_logdata.dart';
 import '../models/model_bleDevice.dart';
+import '../models/model_userDevice.dart';
 import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:async';
@@ -42,6 +43,7 @@ class ScanscreenState extends State<Scanscreen> {
   String _error;
   String geolocation;
   String currentDeviceName = '';
+  String errorResult = '';
   Timer _timer;
   int _start = 0;
   bool isStart = false;
@@ -53,6 +55,7 @@ class ScanscreenState extends State<Scanscreen> {
   String firstImagePath = '';
   String secondImagePath = '';
   Future<List<DeviceInfo>> _allDeviceTemp;
+  UserDeviceList userList;
 
   // Future<List<DateTime>> allDatetime;
 
@@ -78,8 +81,10 @@ class ScanscreenState extends State<Scanscreen> {
     // _allDeviceTemp = DBHelper().getAllDevices();
 
     super.initState();
+    _textFieldController = TextEditingController(text: '');
+
+    // getDeviceList();
     getCurrentLocation();
-    testSend();
     Wakelock.enable();
 
     currentDeviceName = '';
@@ -87,13 +92,58 @@ class ScanscreenState extends State<Scanscreen> {
     currentHumi = '-';
   }
 
-  void testSend() async {
-    var client = http.Client();
+  getDeviceList() async {
+    String temp = this._textFieldController.text;
+    String phoneNumber = '';
+    phoneNumber += temp.substring(0, 3);
+    phoneNumber += '-';
+    phoneNumber += temp.substring(3, 7);
+    phoneNumber += '-';
+    phoneNumber += temp.substring(7, 11);
 
-    var uriResponse =
-        await client.post('http://175.126.232.236:8989/01011111101');
-    print('뭐라고');
-    print(uriResponse.body);
+    try {
+      var client = http.Client();
+      var uriResponse = await client.post('http://175.126.232.236:8989/bb',
+          headers: {"Content-Type": "application/x-www-form-urlencoded"},
+          body: {"ZONE_NM": phoneNumber});
+      print('뭐라고');
+      print(uriResponse.body.toString().substring(33));
+      String result = uriResponse.body.toString().substring(33);
+      UserDeviceList list = UserDeviceList.fromJson(json.decode(result));
+      print('HTTP Result Code : ' + uriResponse.statusCode.toString());
+      if (uriResponse.statusCode == 200) {
+        setState(() {
+          userList = list;
+          //TODO: 더미 데이터 삭제 !
+          userList.userDevices.add(new UserDevice(
+              deviceNumber: 'TESTSENSOR_EC5906',
+              deviceName: 'GC123',
+              destName: '옆동네 큰 병원'));
+          userList.userDevices.add(new UserDevice(
+              deviceNumber: 'TESTSENSOR_677199',
+              deviceName: 'GC123',
+              destName: '시원한 병원'));
+          userList.userDevices.add(new UserDevice(
+              deviceNumber: 'TESTSENSOR_0C5682',
+              deviceName: 'GC555',
+              destName: '큰 병원'));
+          beforeInit = false;
+        });
+        startTimer();
+        init();
+      } else {
+        setState(() {
+          errorResult = '다시 시도해주세요';
+        });
+
+        print('다시 시도해봐 !');
+      }
+    } catch (e) {
+      print(e);
+      setState(() {
+        errorResult = '번호와 일치하는 정보가 없습니다.';
+      });
+    }
   }
 
   @override
@@ -593,9 +643,31 @@ class ScanscreenState extends State<Scanscreen> {
                         'scan');
                     print(currentItem.peripheral.identifier);
                     print('인 !');
-                    deviceList.add(currentItem);
+                    // 유저 리스트 목록에 있는 경우에만 추가
+                    for (int k = 0; k < userList.userDevices.length; k++) {
+                      if (userList.userDevices[k].deviceNumber.substring(
+                              userList.userDevices[k].deviceNumber.length -
+                                  6) ==
+                          currentItem.getserialNumber()) {
+                        currentItem.destName = userList.userDevices[k].destName;
+                        setState(() {
+                          deviceList.add(currentItem);
+                          deviceList.sort((a, b) =>
+                              a.destName.length.compareTo(b.destName.length));
+                        });
 
-                    connect(deviceList.length - 1, 0);
+                        int index = -1;
+                        for (var i = 0; i < deviceList.length; i++) {
+                          if (deviceList[i].peripheral.identifier ==
+                              currentItem.peripheral.identifier) {
+                            index = i;
+                            break;
+                          }
+                        }
+                        if (index != -1) connect(index, 0);
+                        break;
+                      }
+                    }
                   }
                 }
               }
@@ -716,7 +788,21 @@ class ScanscreenState extends State<Scanscreen> {
             _curPeripheral = peripheral;
             // getCurrentLocation();
             //peripheral.
-            deviceList[index].connectionState = 'connect';
+            int tempIndex = -1;
+            for (int i = 0; i < this.deviceList.length; i++) {
+              if (this.deviceList[i].peripheral.identifier ==
+                  peripheral.identifier) {
+                tempIndex = i;
+                break;
+              }
+            }
+            if (tempIndex != -1) {
+              //FIXME: 여기 setState 문제가 있을 수 있네??
+              setState(() {
+                deviceList[tempIndex].connectionState = 'connect';
+              });
+            }
+
             setBLEState('연결 완료');
 
             // startRoutine(index);
@@ -745,11 +831,25 @@ class ScanscreenState extends State<Scanscreen> {
           break;
         case PeripheralConnectionState.connecting:
           {
-            deviceList[index].connectionState = 'connecting';
+            // deviceList[index].connectionState = 'connecting';
 
             // showMyDialog_Connecting(context);
 
             print('연결중입니당!');
+            int tempIndex = -1;
+            for (int i = 0; i < this.deviceList.length; i++) {
+              if (this.deviceList[i].peripheral.identifier ==
+                  peripheral.identifier) {
+                tempIndex = i;
+                break;
+              }
+            }
+            if (tempIndex != -1) {
+              //FIXME: 여기 setState 문제가 있을 수 있네??
+              setState(() {
+                deviceList[tempIndex].connectionState = 'connecting';
+              });
+            }
             currentState = 'connecting';
             setBLEState('<연결 중>');
           } //연결중
@@ -763,7 +863,21 @@ class ScanscreenState extends State<Scanscreen> {
             print("${peripheral.name} has DISCONNECTED");
             //TODO: 일단 주석 !
             // _stopMonitoringTemperature();
-            deviceList[index].connectionState = 'scan';
+            int tempIndex = -1;
+            for (int i = 0; i < this.deviceList.length; i++) {
+              if (this.deviceList[i].peripheral.identifier ==
+                  peripheral.identifier) {
+                tempIndex = i;
+                break;
+              }
+            }
+            if (tempIndex != -1) {
+              //FIXME: 여기 setState 문제가 있을 수 있네??
+              setState(() {
+                deviceList[tempIndex].connectionState = 'scan';
+              });
+            }
+
             setBLEState('<연결 종료>');
 
             print('여긴 오냐');
@@ -857,12 +971,17 @@ class ScanscreenState extends State<Scanscreen> {
                   ),
                   InkWell(
                     onTap: () async {
-                      // getDevice();
-                      startTimer();
-                      init();
-                      setState(() {
-                        beforeInit = false;
-                      });
+                      String temp = '';
+                      // print(_textFieldController.text);
+                      // print(temp.toString());
+                      if (_textFieldController.text == '' ||
+                          _textFieldController.text.length != 11) {
+                        setState(() {
+                          errorResult = '전화번호를 확인해주세요. ';
+                        });
+                      } else {
+                        await getDeviceList();
+                      }
                     },
                     child: Container(
                       decoration: BoxDecoration(
@@ -882,7 +1001,8 @@ class ScanscreenState extends State<Scanscreen> {
                         ),
                       ),
                     ),
-                  )
+                  ),
+                  Text(errorResult),
                 ],
               ),
             ]));
@@ -939,7 +1059,8 @@ class ScanscreenState extends State<Scanscreen> {
                         ),
                         padding: EdgeInsets.all(8),
                         alignment: Alignment.center,
-                        child: Text('좋은 병원', style: boldTextStyle),
+                        child: Text(deviceList[index].destName,
+                            style: boldTextStyle),
                       )),
                   Expanded(
                       flex: 3,
@@ -958,9 +1079,26 @@ class ScanscreenState extends State<Scanscreen> {
                                 'SENSOR_' +
                                     deviceList[index].getserialNumber());
                             if (result == 'success') {
-                              setState(() {
-                                // deviceList.removeAt(index);
-                              });
+                              for (int k = 0;
+                                  k < userList.userDevices.length;
+                                  k++) {
+                                if (userList.userDevices[k].deviceNumber
+                                        .substring(11) ==
+                                    deviceList[index].getserialNumber()) {
+                                  setState(() {
+                                    userList.userDevices.removeAt(k);
+                                    deviceList.removeAt(index);
+                                  });
+                                  break;
+                                }
+                              }
+                            } else if (result == 'return') {
+                              if (deviceList[index].destName.substring(
+                                      deviceList[index].destName.length - 2) !=
+                                  '송)')
+                                setState(() {
+                                  deviceList[index].destName += ' (회송)';
+                                });
                             }
                           },
                           child: Text('종료', style: boldTextStyle),
@@ -1130,162 +1268,186 @@ class ScanscreenState extends State<Scanscreen> {
   @override
   Widget build(BuildContext context) {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
-    return MaterialApp(
-        builder: (context, child) {
-          return MediaQuery(
-            child: child,
-            data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
-          );
-        },
-        debugShowCheckedModeBanner: false,
-        title: 'OPTILO',
-        theme: ThemeData(
-          // primarySwatch: Colors.grey,
-          primaryColor: Color.fromRGBO(0x4C, 0xA5, 0xC7, 1),
-          //canvasColor: Colors.transparent,
-        ),
-        home: Scaffold(
-          appBar: PreferredSize(
-              preferredSize: Size.fromHeight(75.0), // here the desired height
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  AppBar(
-                      // backgroundColor: Color.fromARGB(22, 27, 32, 1),
-                      title: Row(
-                    mainAxisAlignment: MainAxisAlignment.start,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        flex: 4,
-                        child: Image(
-                          image: AssetImage('images/geo_young.png'),
-                          fit: BoxFit.contain,
-                          width: MediaQuery.of(context).size.width * 0.20,
-                          // height: 70,
-                        ),
-                      ),
-                      Expanded(
-                        flex: 8,
-                        child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Image(
-                                image: AssetImage('images/logos.png'),
-                                fit: BoxFit.contain,
-                                width: MediaQuery.of(context).size.width * 0.4,
-                                // height: MediaQuery.of(context).size.width * 0.1,
-                              ),
-                            ]),
-                      ),
-                      Expanded(
-                        flex: 4,
-                        child: SizedBox(),
-                      ),
-                    ],
-                  )),
-                ],
-              )),
-          body: Container(
-            width: MediaQuery.of(context).size.width,
-            decoration: BoxDecoration(
-              color: Color.fromRGBO(240, 240, 240, 1),
-              boxShadow: [customeBoxShadow()],
-              //color: Color.fromRGBO(81, 97, 130, 1),
-            ),
-            child: Column(
-              children: <Widget>[
-                Expanded(
-                    flex: 40,
-                    child: Container(
-                        margin: EdgeInsets.only(
-                            top: MediaQuery.of(context).size.width * 0.035),
-                        width: MediaQuery.of(context).size.width * 0.98,
-                        // height:
-                        //     MediaQuery.of(context).size.width * 0.45,
-
-                        child: beforeInit == false
-                            ? list()
-                            : getPhoneNumber()) //리스트 출력
-                    ),
-                beforeInit == false
-                    ? Expanded(
-                        flex: 5,
-                        child: Container(
-                            color: Color.fromRGBO(200, 200, 200, 1),
-                            // padding: EdgeInsets.only(
-                            //   bottom: MediaQuery.of(context).size.width * 0.015,
-                            // ),
-                            margin: EdgeInsets.only(
-                              top: MediaQuery.of(context).size.width * 0.015,
-                              // bottom: MediaQuery.of(context).size.width * 0.015,
-                            ),
-                            // bottom: MediaQuery.of(context).size.width * 0.035),
-                            width: MediaQuery.of(context).size.width * 0.97,
-                            // height:
-                            //     MediaQuery.of(context).size.width * 0.45,
-
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Text(
-                                  resultText,
-                                  style: boldTextStyle,
-                                ),
-                                FloatingActionButton(
-                                  onPressed: () {
-                                    FlutterAndroidPip.enterPictureInPictureMode;
-                                  },
-                                  child:
-                                      Icon(Icons.branding_watermark_outlined),
-                                ),
-                              ],
-                            )) //리스트 출력
-                        )
-                    : SizedBox(),
-                Expanded(
-                    flex: beforeInit == false ? 4 : 9,
-                    child: Container(
-                        // margin: EdgeInsets.only(
-                        //   top: MediaQuery.of(context).size.width * 0.015,
-                        //   bottom: MediaQuery.of(context).size.width * 0.01,
-                        // ),
-                        child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+    // print('가로 길이 : ' + MediaQuery.of(context).size.width.toString());
+    if (MediaQuery.of(context).size.width > 300) {
+      return MaterialApp(
+          builder: (context, child) {
+            return MediaQuery(
+              child: child,
+              data: MediaQuery.of(context).copyWith(textScaleFactor: 1.0),
+            );
+          },
+          debugShowCheckedModeBanner: false,
+          title: 'OPTILO',
+          theme: ThemeData(
+            // primarySwatch: Colors.grey,
+            primaryColor: Color.fromRGBO(0x4C, 0xA5, 0xC7, 1),
+            //canvasColor: Colors.transparent,
+          ),
+          home: Scaffold(
+            appBar: PreferredSize(
+                preferredSize: Size.fromHeight(75.0), // here the desired height
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    AppBar(
+                        // backgroundColor: Color.fromARGB(22, 27, 32, 1),
+                        title: Row(
+                      mainAxisAlignment: MainAxisAlignment.start,
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Image(
-                          image: AssetImage('images/background3.png'),
-                          fit: BoxFit.contain,
-                          width: MediaQuery.of(context).size.width * 0.12,
-                          // height: MediaQuery.of(context).size.width * 0.1,
+                        Expanded(
+                          flex: 4,
+                          child: Image(
+                            image: AssetImage('images/geo_young.png'),
+                            fit: BoxFit.contain,
+                            width: MediaQuery.of(context).size.width * 0.20,
+                            // height: 70,
+                          ),
                         ),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Text(
-                              '(주)옵티로',
-                              style: boldTextStyle2,
-                            ),
-                            Text(
-                              '인천광역시 연수구 송도미래로 30 스마트밸리 D동',
-                              style: thinSmallTextStyle,
-                            ),
-                            Text(
-                              'H : www.optilo.net  T : 070-5143-8585',
-                              style: thinSmallTextStyle,
-                            ),
-                          ],
-                        )
+                        Expanded(
+                          flex: 8,
+                          child: Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Image(
+                                  image: AssetImage('images/logos.png'),
+                                  fit: BoxFit.contain,
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.4,
+                                  // height: MediaQuery.of(context).size.width * 0.1,
+                                ),
+                              ]),
+                        ),
+                        Expanded(
+                          flex: 4,
+                          child: SizedBox(),
+                        ),
                       ],
-                    )) //리스트 출력
-                    ),
-              ],
+                    )),
+                  ],
+                )),
+            body: Container(
+              width: MediaQuery.of(context).size.width,
+              decoration: BoxDecoration(
+                color: Color.fromRGBO(240, 240, 240, 1),
+                boxShadow: [customeBoxShadow()],
+                //color: Color.fromRGBO(81, 97, 130, 1),
+              ),
+              child: Column(
+                children: <Widget>[
+                  Expanded(
+                      flex: 40,
+                      child: Container(
+                          margin: EdgeInsets.only(
+                              top: MediaQuery.of(context).size.width * 0.035),
+                          width: MediaQuery.of(context).size.width * 0.98,
+                          // height:
+                          //     MediaQuery.of(context).size.width * 0.45,
+
+                          child: beforeInit == false
+                              ? list()
+                              : getPhoneNumber()) //리스트 출력
+                      ),
+                  beforeInit == false
+                      ? Expanded(
+                          flex: 5,
+                          child: Container(
+                              color: Color.fromRGBO(200, 200, 200, 1),
+                              // padding: EdgeInsets.only(
+                              //   bottom: MediaQuery.of(context).size.width * 0.015,
+                              // ),
+                              margin: EdgeInsets.only(
+                                top: MediaQuery.of(context).size.width * 0.015,
+                                // bottom: MediaQuery.of(context).size.width * 0.015,
+                              ),
+                              // bottom: MediaQuery.of(context).size.width * 0.035),
+                              width: MediaQuery.of(context).size.width * 0.97,
+                              // height:
+                              //     MediaQuery.of(context).size.width * 0.45,
+
+                              child: Row(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Text(
+                                    resultText,
+                                    style: boldTextStyle,
+                                  ),
+                                  FloatingActionButton(
+                                    onPressed: () {
+                                      FlutterAndroidPip
+                                          .enterPictureInPictureMode;
+                                    },
+                                    child:
+                                        Icon(Icons.branding_watermark_outlined),
+                                  ),
+                                ],
+                              )) //리스트 출력
+                          )
+                      : SizedBox(),
+                  Expanded(
+                      flex: beforeInit == false ? 4 : 9,
+                      child: Container(
+                          // margin: EdgeInsets.only(
+                          //   top: MediaQuery.of(context).size.width * 0.015,
+                          //   bottom: MediaQuery.of(context).size.width * 0.01,
+                          // ),
+                          child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          Image(
+                            image: AssetImage('images/background3.png'),
+                            fit: BoxFit.contain,
+                            width: MediaQuery.of(context).size.width * 0.12,
+                            // height: MediaQuery.of(context).size.width * 0.1,
+                          ),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Text(
+                                '(주)옵티로',
+                                style: boldTextStyle2,
+                              ),
+                              Text(
+                                '인천광역시 연수구 송도미래로 30 스마트밸리 D동',
+                                style: thinSmallTextStyle,
+                              ),
+                              Text(
+                                'H : www.optilo.net  T : 070-5143-8585',
+                                style: thinSmallTextStyle,
+                              ),
+                            ],
+                          )
+                        ],
+                      )) //리스트 출력
+                      ),
+                ],
+              ),
             ),
-          ),
-        ));
+          ));
+    } else {
+      return Container(
+        width: MediaQuery.of(context).size.width,
+        height: MediaQuery.of(context).size.height,
+        color: Colors.white,
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Text(
+              resultText,
+              style: TextStyle(
+                  fontSize: MediaQuery.of(context).size.width / 18,
+                  color: Colors.black),
+            ),
+          ],
+        ),
+      );
+    }
   }
 
   Widget getbatteryImage(int battery) {
@@ -1470,8 +1632,7 @@ class ScanscreenState extends State<Scanscreen> {
         return;
       }
     }
-
-    location.enableBackgroundMode(enable: true);
+    // location.enableBackgroundMode(enable: true);
     _locationData = await location.getLocation();
     print('lng: ' + _locationData.longitude.toString());
     print('lat: ' + _locationData.latitude.toString());
@@ -1480,7 +1641,8 @@ class ScanscreenState extends State<Scanscreen> {
     });
 
     location.onLocationChanged.listen((loc.LocationData tempcurrentLocation) {
-      print('lat: ' + tempcurrentLocation.latitude.toString());
+      // print('lng: ' + _locationData.longitude.toString());
+      // print('lat: ' + tempcurrentLocation.latitude.toString());
       setState(() {
         currentLocation = tempcurrentLocation;
       });
@@ -1632,8 +1794,8 @@ showMyDialog_end(
                             '||' +
                             '||' +
                             '|' +
-                            '|' +
-                            '||||' +
+                            '9999|' +
+                            '9999||||' +
                             '|1'
                                 ';';
                         socket.write(body);
@@ -1673,14 +1835,15 @@ showMyDialog_end(
                           '||' +
                           '||' +
                           '|' +
-                          '|' +
-                          '||||' +
+                          '9999|' +
+                          '9999||||' +
                           '|2'
                               ';';
                       socket.write(body);
                       print('connected server & Sended to server');
                       socket.close();
-                      Navigator.of(context).pop('success');
+
+                      Navigator.of(context).pop('return');
                     } else {
                       print('Fail Send to Server');
                       Navigator.of(context).pop('fail');

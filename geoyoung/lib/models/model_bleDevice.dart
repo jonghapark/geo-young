@@ -5,6 +5,7 @@ import 'dart:convert';
 
 //BLE 장치 정보 저장 클래스
 class BleDeviceItem {
+  String destName = '';
   bool sendState = true;
   DateTime lastUpdateTime;
   String deviceName;
