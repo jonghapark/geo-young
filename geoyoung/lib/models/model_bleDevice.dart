@@ -13,11 +13,12 @@ class BleDeviceItem {
   int rssi;
   AdvertisementData advertisementData;
   String connectionState;
+  int status;
   List<LogData> logDatas = [];
   String firstPath = '';
   String secondPath = '';
   BleDeviceItem(this.deviceName, this.rssi, this.peripheral,
-      this.advertisementData, this.connectionState);
+      this.advertisementData, this.connectionState, this.status);
 
   getTemperature() {
     int tmp = ByteData.sublistView(

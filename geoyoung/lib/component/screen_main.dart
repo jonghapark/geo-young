@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
@@ -16,6 +18,7 @@ import 'package:flutter/services.dart';
 import '../utils/util.dart';
 import 'package:wakelock/wakelock.dart';
 import 'package:flutter_android_pip/flutter_android_pip.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class Scanscreen extends StatefulWidget {
   @override
@@ -57,6 +60,8 @@ class ScanscreenState extends State<Scanscreen> {
   Future<List<DeviceInfo>> _allDeviceTemp;
   UserDeviceList userList;
 
+  var _flutterLocalNotificationsPlugin;
+
   // Future<List<DateTime>> allDatetime;
 
   String currentTemp;
@@ -79,12 +84,10 @@ class ScanscreenState extends State<Scanscreen> {
   @override
   void initState() {
     // _allDeviceTemp = DBHelper().getAllDevices();
-
     super.initState();
     _textFieldController = TextEditingController(text: '');
 
     // getDeviceList();
-
     Wakelock.enable();
 
     currentDeviceName = '';
@@ -93,6 +96,43 @@ class ScanscreenState extends State<Scanscreen> {
     setState(() {
       getCurrentLocation();
     });
+    var initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    // var initializationSettingsIOS = IOSInitializationSettings();
+
+    var initializationSettings =
+        InitializationSettings(android: initializationSettingsAndroid);
+
+    _flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
+    _flutterLocalNotificationsPlugin.initialize(initializationSettings,
+        onSelectNotification: onSelectNotification);
+  }
+
+  Future<void> onSelectNotification(String payload) async {
+    debugPrint("$payload");
+    showDialog(
+        context: context,
+        builder: (_) => AlertDialog(
+              title: Text('Notification Payload'),
+              content: Text('Payload: $payload'),
+            ));
+  }
+
+  Future<void> _showNotification(String devicename) async {
+    var android = AndroidNotificationDetails('geo_young_channel',
+        'geo_young_channel', 'this is geo_young push channel',
+        importance: Importance.max, priority: Priority.high);
+
+    var ios = IOSNotificationDetails();
+    var detail = NotificationDetails(android: android);
+
+    await _flutterLocalNotificationsPlugin.show(
+      Random().nextInt(1000),
+      '온도 이탈 알림',
+      '[ ' + devicename + ' ] 적정 온도를 이탈했습니다.',
+      detail,
+      payload: 'Hello Flutter',
+    );
   }
 
   getDeviceList() async {
@@ -103,17 +143,19 @@ class ScanscreenState extends State<Scanscreen> {
     phoneNumber += temp.substring(3, 7);
     phoneNumber += '-';
     phoneNumber += temp.substring(7, 11);
-
+    // TODO: 배송중 회송
     try {
       var client = http.Client();
-      var uri = Uri.parse('http://175.126.232.236:8989/bb');
+      var uri = Uri.parse('http://175.126.232.236:8987/bb');
       var uriResponse = await client.post(uri,
           headers: {"Content-Type": "application/x-www-form-urlencoded"},
           body: {"ZONE_NM": phoneNumber});
       print('뭐라고');
-      print(uriResponse.body.toString().substring(33));
-      String result = uriResponse.body.toString().substring(33);
+      print(uriResponse.body.toString().substring(34));
+      String result = uriResponse.body.toString().substring(34);
+      // print(json.decode(result));
       UserDeviceList list = UserDeviceList.fromJson(json.decode(result));
+      print('end ! ');
       print('HTTP Result Code : ' + uriResponse.statusCode.toString());
       if (uriResponse.statusCode == 200) {
         setState(() {
@@ -163,14 +205,16 @@ class ScanscreenState extends State<Scanscreen> {
     _bleManager.destroyClient();
   }
 
-  Future<String> sendtoServer(
-      List<LogData> list, String devicename, int battery) async {
+  Future<String> sendtoServer(List<LogData> list, String devicename,
+      int battery, String device_Name) async {
     // var client = http.Client();
     // print(socket.port);
     Socket socket = await Socket.connect('175.126.232.236', 9982);
     if (socket != null) {
+      bool isOver = false;
       for (int i = 0; i < list.length; i += 5) {
         String body = '';
+        if (list[i].temperature > 9 || list[i].temperature < 1) isOver = true;
         body += devicename +
             '|0|' +
             list[i].timestamp.toString() +
@@ -193,6 +237,9 @@ class ScanscreenState extends State<Scanscreen> {
       }
       print('connected server & Sended to server');
       socket.close();
+      if (isOver) {
+        await _showNotification(device_Name);
+      }
       return 'success';
     } else {
       print('Fail Send to Server');
@@ -361,7 +408,8 @@ class ScanscreenState extends State<Scanscreen> {
           String result = await sendtoServer(
               deviceList[index].logDatas,
               'SENSOR_' + deviceList[index].getserialNumber(),
-              deviceList[index].getBattery());
+              deviceList[index].getBattery(),
+              deviceList[index].deviceName);
 
           // 전송 결과
           // print(temp.body);
@@ -607,7 +655,8 @@ class ScanscreenState extends State<Scanscreen> {
                     break;
                   }
                 }
-                if (index != -1) {
+                if (index != -1 && deviceList[index].status != 1) {
+                  print('이골로 연결 ?');
                   connect(index, 0);
                 }
               }
@@ -649,7 +698,8 @@ class ScanscreenState extends State<Scanscreen> {
                         scanResult.rssi,
                         scanResult.peripheral,
                         scanResult.advertisementData,
-                        'scan');
+                        'scan',
+                        -1);
                     // print(currentItem.peripheral.identifier);
                     // print('인 !');
                     // 유저 리스트 목록에 있는 경우에만 추가
@@ -658,7 +708,11 @@ class ScanscreenState extends State<Scanscreen> {
                               userList.userDevices[k].deviceNumber.length -
                                   6) ==
                           currentItem.getserialNumber()) {
+                        print(userList.userDevices[k].destName);
                         currentItem.destName = userList.userDevices[k].destName;
+                        currentItem.deviceName =
+                            userList.userDevices[k].deviceName;
+                        currentItem.status = userList.userDevices[k].status;
                         setState(() {
                           deviceList.add(currentItem);
                           deviceList
@@ -673,7 +727,8 @@ class ScanscreenState extends State<Scanscreen> {
                             break;
                           }
                         }
-                        if (index != -1) connect(index, 0);
+                        if (index != -1 && deviceList[index].status != 1)
+                          connect(index, 0);
                         break;
                       }
                     }
@@ -1051,218 +1106,242 @@ class ScanscreenState extends State<Scanscreen> {
         padding: const EdgeInsets.all(8),
         itemCount: deviceList.length,
         itemBuilder: (BuildContext context, int index) {
-          return Column(
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                      flex: 7,
-                      child: Container(
-                        decoration: BoxDecoration(
-                            color: Colors.yellow,
-                            boxShadow: [customeBoxShadow()],
-                            borderRadius: BorderRadius.all(Radius.circular(5))),
-                        margin: EdgeInsets.only(
-                          right: 8,
-                          bottom: 8,
-                        ),
-                        padding: EdgeInsets.all(8),
-                        alignment: Alignment.center,
-                        child: Text(deviceList[index].destName,
-                            style: boldTextStyle),
-                      )),
-                  Expanded(
-                      flex: 3,
-                      child: Container(
-                        decoration: BoxDecoration(
-                            color: Color.fromRGBO(230, 230, 230, 1),
-                            boxShadow: [customeBoxShadow()],
-                            borderRadius: BorderRadius.all(Radius.circular(5))),
-                        margin: EdgeInsets.only(bottom: 8),
-                        padding: EdgeInsets.all(8),
-                        alignment: Alignment.center,
-                        child: InkWell(
-                          onTap: () async {
-                            String result = await showMyDialog_end(
-                                context,
-                                deviceList[index].destName,
-                                // 'SENSOR_' +
-                                deviceList[index].getserialNumber());
-                            if (result == 'success') {
-                              for (int k = 0;
-                                  k < userList.userDevices.length;
-                                  k++) {
-                                if (userList.userDevices[k].deviceNumber
-                                        .substring(11) ==
-                                    deviceList[index].getserialNumber()) {
-                                  setState(() {
-                                    userList.userDevices.removeAt(k);
-                                    deviceList.removeAt(index);
-                                  });
-                                  break;
-                                }
-                              }
-                            } else if (result == 'return') {
-                              if (deviceList[index].destName.substring(
-                                      deviceList[index].destName.length - 2) !=
-                                  '송)')
-                                setState(() {
-                                  deviceList[index].destName += ' (회송)';
-                                });
-                            }
-                          },
-                          child: Text('종료', style: boldTextStyle),
-                        ),
-                      ))
-                ],
-              ),
-              Container(
-                decoration: BoxDecoration(
-                    color: deviceList[index].lastUpdateTime == null ||
-                            deviceList[index].lastUpdateTime.isBefore(
-                                DateTime.now()
-                                    .toLocal()
-                                    .subtract(Duration(minutes: 10)))
-                        ? Color.fromRGBO(0x61, 0xB2, 0xD0, 1)
-                        : Colors.white,
-                    boxShadow: [customeBoxShadow()],
-                    borderRadius: BorderRadius.all(Radius.circular(5))),
-                height: MediaQuery.of(context).size.height * 0.10,
-                width: MediaQuery.of(context).size.width * 0.99,
-                child: Column(children: [
-                  Expanded(
-                      flex: 4,
-                      child: InkWell(
-                        onTap: () async {},
+          return Container(
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                        flex: 7,
                         child: Container(
-                            padding: EdgeInsets.only(top: 5, left: 2),
-                            width: MediaQuery.of(context).size.width * 0.98,
-                            decoration: BoxDecoration(
-                                color: Color.fromRGBO(255, 255, 255, 0),
-                                //boxShadow: [customeBoxShadow()],
-                                borderRadius:
-                                    BorderRadius.all(Radius.circular(5))),
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: [
-                                    Text(deviceList[index].getserialNumber(),
-                                        style: boldTextStyle),
+                          decoration: BoxDecoration(
+                              color: deviceList[index].status == 1
+                                  ? Color.fromRGBO(10, 10, 10, 0.4)
+                                  : Colors.yellow,
+                              boxShadow: [customeBoxShadow()],
+                              borderRadius:
+                                  BorderRadius.all(Radius.circular(5))),
+                          margin: EdgeInsets.only(
+                            right: 8,
+                            bottom: 8,
+                          ),
+                          padding: EdgeInsets.all(8),
+                          alignment: Alignment.center,
+                          child: Text(deviceList[index].destName,
+                              style: boldTextStyle),
+                        )),
+                    Expanded(
+                        flex: 3,
+                        child: Container(
+                          decoration: BoxDecoration(
+                              color: Color.fromRGBO(230, 230, 230, 1),
+                              boxShadow: [customeBoxShadow()],
+                              borderRadius:
+                                  BorderRadius.all(Radius.circular(5))),
+                          margin: EdgeInsets.only(bottom: 8),
+                          padding: EdgeInsets.all(8),
+                          alignment: Alignment.center,
+                          child: InkWell(
+                            onTap: () async {
+                              String result = await showMyDialog_end(
+                                  context,
+                                  deviceList[index].destName,
+                                  // 'SENSOR_' +
+                                  deviceList[index].deviceName,
+                                  'TESTSENSOR_' +
+                                      deviceList[index].getserialNumber());
+                              if (result == 'success') {
+                                for (int k = 0;
+                                    k < userList.userDevices.length;
+                                    k++) {
+                                  if (userList.userDevices[k].deviceNumber
+                                          .substring(11) ==
+                                      deviceList[index].getserialNumber()) {
+                                    setState(() {
+                                      // userList.userDevices.removeAt(k);
+                                      userList.userDevices[k].status = 1;
+                                      deviceList[index].status = 1;
+                                    });
+                                    break;
+                                  }
+                                }
+                              } else if (result == 'return') {
+                                deviceList[index].status = 2;
 
-                                    // Text(deviceList[index]
-                                    //     .lastUpdateTime
-                                    //     .toString()),
-                                    // Image(
-                                    //   image: AssetImage('images/T301.png'),
-                                    //   fit: BoxFit.contain,
-                                    //   width:
-                                    //       MediaQuery.of(context).size.width * 0.10,
-                                    //   height:
-                                    //       MediaQuery.of(context).size.width * 0.10,
-                                    // ),
-                                    deviceList[index].lastUpdateTime == null ||
-                                            deviceList[index]
-                                                .lastUpdateTime
-                                                .isBefore(DateTime.now()
-                                                    .toLocal()
-                                                    .subtract(
-                                                        Duration(days: 200)))
-                                        ? Text('최근 업로드 시간 : --일 --:--:--',
-                                            style: lastUpdateTextStyle(context))
-                                        : Text(
-                                            '최근 업로드 시간 : ' +
-                                                DateFormat('d일 HH:mm:ss')
-                                                    .format(deviceList[index]
-                                                        .lastUpdateTime),
-                                            style: lastUpdateTextStyle(context),
-                                          ),
-                                  ],
-                                ),
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceAround,
-                                  children: [
-                                    Text(
-                                        strMapper(
-                                            deviceList[index].connectionState),
-                                        style: strMapper(deviceList[index]
-                                                    .connectionState) ==
-                                                '대기 중'
-                                            ? noboldTextStyle
-                                            : redBoldTextStyle),
-                                    Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        Image(
-                                          image: AssetImage(
-                                              'images/ic_thermometer.png'),
-                                          fit: BoxFit.contain,
-                                          width: MediaQuery.of(context)
-                                                  .size
-                                                  .width *
-                                              0.05,
-                                          // height: MediaQuery.of(context).size.width * 0.1,
-                                        ),
-                                        Text(
-                                          deviceList[index]
-                                                  .getTemperature()
-                                                  .toString() +
-                                              '°C ',
-                                          style: noboldTextStyle,
-                                        ),
-                                      ],
-                                    ),
-                                    // Row(
-                                    //   mainAxisAlignment:
-                                    //       MainAxisAlignment.center,
-                                    //   children: [
-                                    //     Image(
-                                    //       image: AssetImage(
-                                    //           'images/ic_humidity.png'),
-                                    //       fit: BoxFit.contain,
-                                    //       width: MediaQuery.of(context)
-                                    //               .size
-                                    //               .width *
-                                    //           0.05,
-                                    //       // height: MediaQuery.of(context).size.width * 0.1,
-                                    //     ),
-                                    //     Text(
-                                    //       deviceList[index]
-                                    //               .getHumidity()
-                                    //               .toString() +
-                                    //           '% ',
-                                    //       style: noboldTextStyle,
-                                    //     ),
-                                    //   ],
-                                    // ),
-                                    Row(
+                                if (deviceList[index].destName.substring(
+                                        deviceList[index].destName.length -
+                                            2) !=
+                                    '송)')
+                                  setState(() {
+                                    deviceList[index].destName += ' (회송)';
+                                  });
+                              } else if (result == 'retrans') {
+                                setState(() {
+                                  deviceList[index].status = 3;
+                                });
+                              }
+                            },
+                            child: Text('종료', style: boldTextStyle),
+                          ),
+                        ))
+                  ],
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                      color: deviceList[index].status == 1
+                          ? Color.fromRGBO(10, 10, 10, 0.4)
+                          : deviceList[index].lastUpdateTime == null ||
+                                  deviceList[index].lastUpdateTime.isBefore(
+                                      DateTime.now()
+                                          .toLocal()
+                                          .subtract(Duration(minutes: 10)))
+                              ? Color.fromRGBO(0x61, 0xB2, 0xD0, 1)
+                              : Colors.white,
+                      boxShadow: [customeBoxShadow()],
+                      borderRadius: BorderRadius.all(Radius.circular(5))),
+                  height: MediaQuery.of(context).size.height * 0.10,
+                  width: MediaQuery.of(context).size.width * 0.99,
+                  child: Column(children: [
+                    Expanded(
+                        flex: 4,
+                        child: InkWell(
+                          onTap: () async {},
+                          child: Container(
+                              padding: EdgeInsets.only(top: 5, left: 2),
+                              width: MediaQuery.of(context).size.width * 0.98,
+                              decoration: BoxDecoration(
+                                  color: Color.fromRGBO(255, 255, 255, 0),
+                                  //boxShadow: [customeBoxShadow()],
+                                  borderRadius:
+                                      BorderRadius.all(Radius.circular(5))),
+                              child: Column(
+                                mainAxisAlignment:
+                                    MainAxisAlignment.spaceEvenly,
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                children: [
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      Text(deviceList[index].deviceName,
+                                          style: boldTextStyle),
+
+                                      // Text(deviceList[index]
+                                      //     .lastUpdateTime
+                                      //     .toString()),
+                                      // Image(
+                                      //   image: AssetImage('images/T301.png'),
+                                      //   fit: BoxFit.contain,
+                                      //   width:
+                                      //       MediaQuery.of(context).size.width * 0.10,
+                                      //   height:
+                                      //       MediaQuery.of(context).size.width * 0.10,
+                                      // ),
+                                      deviceList[index].lastUpdateTime ==
+                                                  null ||
+                                              deviceList[index]
+                                                  .lastUpdateTime
+                                                  .isBefore(DateTime.now()
+                                                      .toLocal()
+                                                      .subtract(
+                                                          Duration(days: 200)))
+                                          ? Text('최근 업로드 시간 : --일 --:--:--',
+                                              style:
+                                                  lastUpdateTextStyle(context))
+                                          : Text(
+                                              '최근 업로드 시간 : ' +
+                                                  DateFormat('d일 HH:mm:ss')
+                                                      .format(deviceList[index]
+                                                          .lastUpdateTime),
+                                              style:
+                                                  lastUpdateTextStyle(context),
+                                            ),
+                                    ],
+                                  ),
+                                  Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceAround,
+                                    children: [
+                                      Text(
+                                          deviceList[index].status == 1
+                                              ? '운송완료'
+                                              : strMapper(deviceList[index]
+                                                  .connectionState),
+                                          style: strMapper(deviceList[index]
+                                                      .connectionState) ==
+                                                  '대기 중'
+                                              ? noboldTextStyle
+                                              : redBoldTextStyle),
+                                      Row(
                                         mainAxisAlignment:
                                             MainAxisAlignment.center,
                                         children: [
-                                          getbatteryImage(
-                                              deviceList[index].getBattery()),
+                                          Image(
+                                            image: AssetImage(
+                                                'images/ic_thermometer.png'),
+                                            fit: BoxFit.contain,
+                                            width: MediaQuery.of(context)
+                                                    .size
+                                                    .width *
+                                                0.05,
+                                            // height: MediaQuery.of(context).size.width * 0.1,
+                                          ),
                                           Text(
-                                            '  ' +
-                                                deviceList[index]
-                                                    .getBattery()
+                                            deviceList[index]
+                                                    .getTemperature()
                                                     .toString() +
-                                                '%',
+                                                '°C ',
                                             style: noboldTextStyle,
                                           ),
-                                        ]),
-                                  ],
-                                ),
-                              ],
-                            )),
-                      )),
-                ]),
-              )
-            ],
+                                        ],
+                                      ),
+                                      // Row(
+                                      //   mainAxisAlignment:
+                                      //       MainAxisAlignment.center,
+                                      //   children: [
+                                      //     Image(
+                                      //       image: AssetImage(
+                                      //           'images/ic_humidity.png'),
+                                      //       fit: BoxFit.contain,
+                                      //       width: MediaQuery.of(context)
+                                      //               .size
+                                      //               .width *
+                                      //           0.05,
+                                      //       // height: MediaQuery.of(context).size.width * 0.1,
+                                      //     ),
+                                      //     Text(
+                                      //       deviceList[index]
+                                      //               .getHumidity()
+                                      //               .toString() +
+                                      //           '% ',
+                                      //       style: noboldTextStyle,
+                                      //     ),
+                                      //   ],
+                                      // ),
+                                      Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            getbatteryImage(
+                                                deviceList[index].getBattery()),
+                                            Text(
+                                              '  ' +
+                                                  deviceList[index]
+                                                      .getBattery()
+                                                      .toString() +
+                                                  '%',
+                                              style: noboldTextStyle,
+                                            ),
+                                          ]),
+                                    ],
+                                  ),
+                                ],
+                              )),
+                        )),
+                  ]),
+                )
+              ],
+            ),
           );
         },
         //12,13 온도
@@ -1279,7 +1358,9 @@ class ScanscreenState extends State<Scanscreen> {
   Widget build(BuildContext context) {
     SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
     // print('가로 길이 : ' + MediaQuery.of(context).size.width.toString());
-    if (MediaQuery.of(context).size.width > 300) {
+    // print('세로 길이 : ' + MediaQuery.of(context).size.height.toString());
+    if (MediaQuery.of(context).size.height >
+        MediaQuery.of(context).size.width) {
       return MaterialApp(
           builder: (context, child) {
             return MediaQuery(
@@ -1292,7 +1373,7 @@ class ScanscreenState extends State<Scanscreen> {
           theme: ThemeData(
             // primarySwatch: Colors.grey,
             primaryColor: Color.fromRGBO(0x4C, 0xA5, 0xC7, 1),
-            //canvasColor: Colors.transparent,
+            //canvasColor: Colors.nsparent,
           ),
           home: Scaffold(
             appBar: PreferredSize(
@@ -1337,116 +1418,124 @@ class ScanscreenState extends State<Scanscreen> {
                     )),
                   ],
                 )),
-            body: Container(
-              width: MediaQuery.of(context).size.width,
-              decoration: BoxDecoration(
-                color: Color.fromRGBO(240, 240, 240, 1),
-                boxShadow: [customeBoxShadow()],
-                //color: Color.fromRGBO(81, 97, 130, 1),
-              ),
-              child: Column(
-                children: <Widget>[
-                  Expanded(
-                      flex: 2,
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(deviceList.length.toString() + '개 스캔 중   ',
-                              style: lastUpdateTextStyle(context)),
-                        ],
-                      )),
-                  Expanded(
-                      flex: 40,
-                      child: Container(
-                          // margin: EdgeInsets.only(
-                          //     top: MediaQuery.of(context).size.width * 0.035),
-                          width: MediaQuery.of(context).size.width * 0.98,
-                          // height:
-                          //     MediaQuery.of(context).size.width * 0.45,
-
-                          child: beforeInit == false
-                              ? list()
-                              : getPhoneNumber()) //리스트 출력
-                      ),
-                  beforeInit == false
-                      ? Expanded(
-                          flex: 5,
+            body: WillPopScope(
+                onWillPop: () {
+                  return Future(() => false);
+                },
+                // <- Scaffold body만 감싼다.
+                child: Container(
+                  width: MediaQuery.of(context).size.width,
+                  decoration: BoxDecoration(
+                    color: Color.fromRGBO(240, 240, 240, 1),
+                    boxShadow: [customeBoxShadow()],
+                    //color: Color.fromRGBO(81, 97, 130, 1),
+                  ),
+                  child: Column(
+                    children: <Widget>[
+                      Expanded(
+                          flex: 2,
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text(deviceList.length.toString() + '개 스캔 중   ',
+                                  style: lastUpdateTextStyle(context)),
+                            ],
+                          )),
+                      Expanded(
+                          flex: 40,
                           child: Container(
-                              color: Color.fromRGBO(200, 200, 200, 1),
-                              // padding: EdgeInsets.only(
-                              //   bottom: MediaQuery.of(context).size.width * 0.015,
-                              // ),
-                              margin: EdgeInsets.only(
-                                top: MediaQuery.of(context).size.width * 0.015,
-                                // bottom: MediaQuery.of(context).size.width * 0.015,
-                              ),
-                              // bottom: MediaQuery.of(context).size.width * 0.035),
-                              width: MediaQuery.of(context).size.width * 0.97,
+                              // margin: EdgeInsets.only(
+                              //     top: MediaQuery.of(context).size.width * 0.035),
+                              width: MediaQuery.of(context).size.width * 0.98,
                               // height:
                               //     MediaQuery.of(context).size.width * 0.45,
 
+                              child: beforeInit == false
+                                  ? list()
+                                  : getPhoneNumber()) //리스트 출력
+                          ),
+                      beforeInit == false
+                          ? Expanded(
+                              flex: 5,
+                              child: Container(
+                                  color: Color.fromRGBO(200, 200, 200, 1),
+                                  // padding: EdgeInsets.only(
+                                  //   bottom: MediaQuery.of(context).size.width * 0.015,
+                                  // ),
+                                  margin: EdgeInsets.only(
+                                    top: MediaQuery.of(context).size.width *
+                                        0.015,
+                                    // bottom: MediaQuery.of(context).size.width * 0.015,
+                                  ),
+                                  // bottom: MediaQuery.of(context).size.width * 0.035),
+                                  width:
+                                      MediaQuery.of(context).size.width * 0.97,
+                                  // height:
+                                  //     MediaQuery.of(context).size.width * 0.45,
+
+                                  child: Row(
+                                    mainAxisAlignment:
+                                        MainAxisAlignment.spaceEvenly,
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        resultText,
+                                        style: boldTextStyle,
+                                      ),
+                                      FloatingActionButton(
+                                        onPressed: () {
+                                          FlutterAndroidPip
+                                              .enterPictureInPictureMode;
+                                        },
+                                        child: Icon(
+                                            Icons.branding_watermark_outlined),
+                                      ),
+                                    ],
+                                  )) //리스트 출력
+                              )
+                          : SizedBox(),
+                      Expanded(
+                          flex: beforeInit == false ? 4 : 9,
+                          child: Container(
+                              // margin: EdgeInsets.only(
+                              //   top: MediaQuery.of(context).size.width * 0.015,
+                              //   bottom: MediaQuery.of(context).size.width * 0.01,
+                              // ),
                               child: Row(
-                                mainAxisAlignment:
-                                    MainAxisAlignment.spaceEvenly,
-                                crossAxisAlignment: CrossAxisAlignment.center,
+                            mainAxisAlignment: MainAxisAlignment.spaceAround,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Image(
+                                image: AssetImage('images/background3.png'),
+                                fit: BoxFit.contain,
+                                width: MediaQuery.of(context).size.width * 0.12,
+                                // height: MediaQuery.of(context).size.width * 0.1,
+                              ),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisAlignment: MainAxisAlignment.center,
                                 children: [
                                   Text(
-                                    resultText,
-                                    style: boldTextStyle,
+                                    '(주)옵티로',
+                                    style: boldTextStyle2,
                                   ),
-                                  FloatingActionButton(
-                                    onPressed: () {
-                                      FlutterAndroidPip
-                                          .enterPictureInPictureMode;
-                                    },
-                                    child:
-                                        Icon(Icons.branding_watermark_outlined),
+                                  Text(
+                                    '인천광역시 연수구 송도미래로 30 스마트밸리 D동',
+                                    style: thinSmallTextStyle,
+                                  ),
+                                  Text(
+                                    'H : www.optilo.net  T : 070-5143-8585',
+                                    style: thinSmallTextStyle,
                                   ),
                                 ],
-                              )) //리스트 출력
-                          )
-                      : SizedBox(),
-                  Expanded(
-                      flex: beforeInit == false ? 4 : 9,
-                      child: Container(
-                          // margin: EdgeInsets.only(
-                          //   top: MediaQuery.of(context).size.width * 0.015,
-                          //   bottom: MediaQuery.of(context).size.width * 0.01,
-                          // ),
-                          child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceAround,
-                        crossAxisAlignment: CrossAxisAlignment.center,
-                        children: [
-                          Image(
-                            image: AssetImage('images/background3.png'),
-                            fit: BoxFit.contain,
-                            width: MediaQuery.of(context).size.width * 0.12,
-                            // height: MediaQuery.of(context).size.width * 0.1,
-                          ),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Text(
-                                '(주)옵티로',
-                                style: boldTextStyle2,
-                              ),
-                              Text(
-                                '인천광역시 연수구 송도미래로 30 스마트밸리 D동',
-                                style: thinSmallTextStyle,
-                              ),
-                              Text(
-                                'H : www.optilo.net  T : 070-5143-8585',
-                                style: thinSmallTextStyle,
-                              ),
+                              )
                             ],
-                          )
-                        ],
-                      )) //리스트 출력
-                      ),
-                ],
-              ),
-            ),
+                          )) //리스트 출력
+                          ),
+                    ],
+                  ),
+                )),
           ));
     } else {
       return Container(
@@ -1673,15 +1762,15 @@ class ScanscreenState extends State<Scanscreen> {
     }
     location.enableBackgroundMode(enable: false);
     _locationData = await location.getLocation();
-    print('lng: ' + _locationData.longitude.toString());
-    print('lat: ' + _locationData.latitude.toString());
+    // print('lng: ' + _locationData.longitude.toString());
+    // print('lat: ' + _locationData.latitude.toString());
     setState(() {
       currentLocation = _locationData;
     });
 
     location.onLocationChanged.listen((loc.LocationData tempcurrentLocation) {
-      print('lng: ' + tempcurrentLocation.longitude.toString());
-      print('lat: ' + tempcurrentLocation.latitude.toString());
+      // print('lng: ' + tempcurrentLocation.longitude.toString());
+      // print('lat: ' + tempcurrentLocation.latitude.toString());
       setState(() {
         currentLocation = tempcurrentLocation;
       });
@@ -1743,6 +1832,84 @@ showMyDialog_finishStart(BuildContext context, String deviceName) {
   );
 }
 
+returnYesOrNoDialog(BuildContext context) {
+  return showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('회송'),
+          content: Text('회송 처리 하시겠습니까 ?'),
+          actions: <Widget>[
+            TextButton(
+                child: Text('확인'),
+                onPressed: () {
+                  Navigator.pop(context, 1);
+                  // print(savedList);
+                }),
+            TextButton(
+              child: Text('취소'),
+              onPressed: () {
+                Navigator.pop(context, 0);
+              },
+            ),
+          ],
+        );
+      });
+}
+
+ReTransportYesOrNoDialog(BuildContext context) {
+  return showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('재배송'),
+          content: Text('재배송 처리 하시겠습니까 ?'),
+          actions: <Widget>[
+            TextButton(
+                child: Text('확인'),
+                onPressed: () {
+                  Navigator.pop(context, 1);
+                  // print(savedList);
+                }),
+            TextButton(
+              child: Text('취소'),
+              onPressed: () {
+                Navigator.pop(context, 0);
+              },
+            ),
+          ],
+        );
+      });
+}
+
+EndYesOrNoDialog(BuildContext context) {
+  return showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: Text('배송완료'),
+          content: Text('배송완료 처리 하시겠습니까 ?'),
+          actions: <Widget>[
+            TextButton(
+                child: Text('확인'),
+                onPressed: () {
+                  Navigator.pop(context, 1);
+                  // print(savedList);
+                }),
+            TextButton(
+              child: Text('취소'),
+              onPressed: () {
+                Navigator.pop(context, 0);
+              },
+            ),
+          ],
+        );
+      });
+}
+
 showMyDialog_Connecting(BuildContext context) {
   bool manuallyClosed = false;
   Future.delayed(Duration(seconds: 2)).then((_) {
@@ -1798,7 +1965,8 @@ showMyDialog_Connecting(BuildContext context) {
   );
 }
 
-showMyDialog_end(BuildContext context, String destName, String devicename) {
+showMyDialog_end(
+    BuildContext context, String destName, String de_name, String devicename) {
   DateTime now = DateTime.now().toLocal();
   return showDialog(
     // barrierDismissible: false,
@@ -1817,90 +1985,165 @@ showMyDialog_end(BuildContext context, String destName, String devicename) {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 Container(
+                  decoration: BoxDecoration(
+                      color: Colors.white,
+                      boxShadow: [
+                        BoxShadow(
+                            color: Colors.black.withOpacity(0.2),
+                            offset: Offset(0, 1),
+                            blurRadius: 6)
+                      ],
+                      borderRadius: BorderRadius.all(Radius.circular(5))),
                   padding: EdgeInsets.all(8),
-                  color: Colors.white,
                   alignment: Alignment.center,
-                  child: Text(destName + ' ' + devicename),
+                  child: Text(destName + ' ' + de_name),
                 ),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    InkWell(
-                      onTap: () async {
-                        Socket socket =
-                            await Socket.connect('175.126.232.236', 9982);
-                        if (socket != null) {
-                          String body = '';
-                          body += devicename +
-                              '||' +
-                              now.toString() +
-                              '|' +
-                              now.toString() +
-                              '||' +
-                              '||' +
-                              '|' +
-                              '9999|' +
-                              '9999||||' +
-                              '|2'
-                                  ';';
-                          socket.write(body);
-                          print('connected server & Sended to server');
-                          socket.close();
-                          Navigator.of(context).pop('return');
-                        } else {
-                          print('Fail Send to Server');
-                          Navigator.of(context).pop('fail');
-                        }
-                      },
-                      child: Container(
-                        width: MediaQuery.of(context).size.width / 4,
-                        height: MediaQuery.of(context).size.width / 4,
-                        padding: EdgeInsets.all(8),
-                        color: Colors.red,
-                        alignment: Alignment.center,
-                        child: Text(
-                          '회송',
-                          style: TextStyle(
-                            fontSize: 20,
-                            color: Color.fromRGBO(244, 244, 244, 1),
-                            fontWeight: FontWeight.w800,
+                    Column(
+                      children: [
+                        InkWell(
+                          onTap: () async {
+                            int result = await returnYesOrNoDialog(context);
+                            if (result == 1) {
+                              Socket socket =
+                                  await Socket.connect('175.126.232.236', 9982);
+                              if (socket != null) {
+                                String body = '';
+                                body += devicename +
+                                    '||' +
+                                    now.toString() +
+                                    '|' +
+                                    now.toString() +
+                                    '||' +
+                                    '||' +
+                                    '|' +
+                                    '9999|' +
+                                    '9999||||' +
+                                    '|2'
+                                        ';';
+                                socket.write(body);
+                                print('connected server & Sended to server');
+                                socket.close();
+
+                                Navigator.of(context).pop('return');
+                              } else {
+                                print('Fail Send to Server');
+                                Navigator.of(context).pop('fail');
+                              }
+                            }
+                          },
+                          //TODO: 1 -> 배송완료 / 2 -> 회송 / 3-> 전송중
+                          child: Container(
+                            decoration: BoxDecoration(
+                                color: Colors.red,
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      offset: Offset(0, 1),
+                                      blurRadius: 6)
+                                ],
+                                borderRadius:
+                                    BorderRadius.all(Radius.circular(5))),
+                            width: MediaQuery.of(context).size.width / 4,
+                            height: MediaQuery.of(context).size.width / 8,
+                            padding: EdgeInsets.all(8),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '회송',
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: Color.fromRGBO(244, 244, 244, 1),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
                         ),
-                      ),
+                        InkWell(
+                          onTap: () async {
+                            int result =
+                                await ReTransportYesOrNoDialog(context);
+                            if (result == 1) {
+                              Navigator.of(context).pop('retrans');
+                            } else {
+                              // Navigator.of(context).pop('fail');
+                            }
+                          },
+                          //TODO: 1 -> 배송완료 / 2 -> 회송 / 3-> 전송중
+                          child: Container(
+                            decoration: BoxDecoration(
+                                color: Colors.blue,
+                                boxShadow: [
+                                  BoxShadow(
+                                      color: Colors.black.withOpacity(0.2),
+                                      offset: Offset(0, 1),
+                                      blurRadius: 6)
+                                ],
+                                borderRadius:
+                                    BorderRadius.all(Radius.circular(5))),
+                            width: MediaQuery.of(context).size.width / 4,
+                            height: MediaQuery.of(context).size.width / 8,
+                            padding: EdgeInsets.all(8),
+                            alignment: Alignment.center,
+                            child: Text(
+                              '재배송',
+                              style: TextStyle(
+                                fontSize: 20,
+                                color: Color.fromRGBO(244, 244, 244, 1),
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     InkWell(
                         onTap: () async {
-                          Socket socket =
-                              await Socket.connect('175.126.232.236', 9982);
-                          if (socket != null) {
-                            String body = '';
-                            body += devicename +
-                                '||' +
-                                now.toString() +
-                                '|' +
-                                now.toString() +
-                                '||' +
-                                '||' +
-                                '|' +
-                                '9999|' +
-                                '9999||||' +
-                                '|1'
-                                    ';';
-                            socket.write(body);
-                            print('connected server & Sended to server');
-                            socket.close();
-                            Navigator.of(context).pop('success');
-                          } else {
-                            print('Fail Send to Server');
-                            Navigator.of(context).pop('fail');
+                          int result = await EndYesOrNoDialog(context);
+                          if (result == 1) {
+                            Socket socket =
+                                await Socket.connect('175.126.232.236', 9982);
+                            if (socket != null) {
+                              String body = '';
+                              body += devicename +
+                                  '||' +
+                                  now.toString() +
+                                  '|' +
+                                  now.toString() +
+                                  '||' +
+                                  '||' +
+                                  '|' +
+                                  '9999|' +
+                                  '9999||||' +
+                                  '|1'
+                                      ';';
+                              socket.write(body);
+                              print('connected server & Sended to server');
+                              socket.close();
+
+                              Navigator.of(context).pop('success');
+                            } else {
+                              print('Fail Send to Server');
+                              Navigator.of(context).pop('fail');
+                            }
                           }
                         },
                         child: Container(
+                          decoration: BoxDecoration(
+                              color: Colors.green,
+                              boxShadow: [
+                                BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    offset: Offset(0, 1),
+                                    blurRadius: 6)
+                              ],
+                              borderRadius:
+                                  BorderRadius.all(Radius.circular(5))),
                           width: MediaQuery.of(context).size.width / 4,
                           height: MediaQuery.of(context).size.width / 4,
                           padding: EdgeInsets.all(8),
                           margin: EdgeInsets.only(bottom: 4),
-                          color: Colors.green,
                           alignment: Alignment.center,
                           child: Text(
                             // 색상 변환 -> 회 완료

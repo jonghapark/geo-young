@@ -1,7 +1,8 @@
 class UserDevice {
-  String deviceName;
-  String destName;
-  String deviceNumber;
+  String deviceName = '';
+  String destName = '';
+  String deviceNumber = '';
+  int status = -1;
 
   UserDevice({this.destName, this.deviceName, this.deviceNumber});
 
@@ -9,6 +10,11 @@ class UserDevice {
     deviceName = json['de_name'];
     destName = json['node_name'];
     deviceNumber = json['de_number'];
+    status = int.parse(json['tra_transport_state']);
+    print(deviceName);
+    print(destName);
+    print(deviceNumber);
+    print(status.toString());
   }
 }
 
