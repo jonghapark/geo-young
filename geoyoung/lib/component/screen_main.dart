@@ -37,7 +37,7 @@ class ScanscreenState extends State<Scanscreen> {
   String _statusText = ''; // BLE 상태 변수
   loc.LocationData currentLocation;
   int dataSize = 0;
-  loc.Location location = new loc.Location();
+  loc.Location location;
   StreamSubscription<loc.LocationData> _locationSubscription;
   StreamSubscription monitoringStreamSubscription;
   String _error;
@@ -84,12 +84,15 @@ class ScanscreenState extends State<Scanscreen> {
     _textFieldController = TextEditingController(text: '');
 
     // getDeviceList();
-    getCurrentLocation();
+
     Wakelock.enable();
 
     currentDeviceName = '';
     currentTemp = '-';
     currentHumi = '-';
+    setState(() {
+      getCurrentLocation();
+    });
   }
 
   getDeviceList() async {
@@ -103,7 +106,8 @@ class ScanscreenState extends State<Scanscreen> {
 
     try {
       var client = http.Client();
-      var uriResponse = await client.post('http://175.126.232.236:8989/bb',
+      var uri = Uri.parse('http://175.126.232.236:8989/bb');
+      var uriResponse = await client.post(uri,
           headers: {"Content-Type": "application/x-www-form-urlencoded"},
           body: {"ZONE_NM": phoneNumber});
       print('뭐라고');
@@ -114,19 +118,24 @@ class ScanscreenState extends State<Scanscreen> {
       if (uriResponse.statusCode == 200) {
         setState(() {
           userList = list;
+          // print(userList.userDevices[0].destName);
+          // print(userList.userDevices[1].destName);
+          // print(userList.userDevices[1].deviceName);
+          // print(userList.userDevices[1].deviceNumber);
+
           //TODO: 더미 데이터 삭제 !
-          userList.userDevices.add(new UserDevice(
-              deviceNumber: 'TESTSENSOR_EC5906',
-              deviceName: 'GC123',
-              destName: '옆동네 큰 병원'));
-          userList.userDevices.add(new UserDevice(
-              deviceNumber: 'TESTSENSOR_677199',
-              deviceName: 'GC123',
-              destName: '시원한 병원'));
-          userList.userDevices.add(new UserDevice(
-              deviceNumber: 'TESTSENSOR_0C5682',
-              deviceName: 'GC555',
-              destName: '큰 병원'));
+          // userList.userDevices.add(new UserDevice(
+          //     deviceNumber: 'TESTSENSOR_EC5906',
+          //     deviceName: 'GC123',
+          //     destName: '굿 병원_3'));
+          // userList.userDevices.add(new UserDevice(
+          //     deviceNumber: 'TESTSENSOR_677199',
+          //     deviceName: 'GC123',
+          //     destName: 'Good 병굿_2'));
+          // userList.userDevices.add(new UserDevice(
+          //     deviceNumber: 'TESTSENSOR_0C5682',
+          //     deviceName: 'GC555',
+          //     destName: '굿 병원_1'));
           beforeInit = false;
         });
         startTimer();
@@ -641,8 +650,8 @@ class ScanscreenState extends State<Scanscreen> {
                         scanResult.peripheral,
                         scanResult.advertisementData,
                         'scan');
-                    print(currentItem.peripheral.identifier);
-                    print('인 !');
+                    // print(currentItem.peripheral.identifier);
+                    // print('인 !');
                     // 유저 리스트 목록에 있는 경우에만 추가
                     for (int k = 0; k < userList.userDevices.length; k++) {
                       if (userList.userDevices[k].deviceNumber.substring(
@@ -652,8 +661,8 @@ class ScanscreenState extends State<Scanscreen> {
                         currentItem.destName = userList.userDevices[k].destName;
                         setState(() {
                           deviceList.add(currentItem);
-                          deviceList.sort((a, b) =>
-                              a.destName.length.compareTo(b.destName.length));
+                          deviceList
+                              .sort((a, b) => a.destName.compareTo(b.destName));
                         });
 
                         int index = -1;
@@ -1076,8 +1085,9 @@ class ScanscreenState extends State<Scanscreen> {
                           onTap: () async {
                             String result = await showMyDialog_end(
                                 context,
-                                'SENSOR_' +
-                                    deviceList[index].getserialNumber());
+                                deviceList[index].destName,
+                                // 'SENSOR_' +
+                                deviceList[index].getserialNumber());
                             if (result == 'success') {
                               for (int k = 0;
                                   k < userList.userDevices.length;
@@ -1337,10 +1347,19 @@ class ScanscreenState extends State<Scanscreen> {
               child: Column(
                 children: <Widget>[
                   Expanded(
+                      flex: 2,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          Text(deviceList.length.toString() + '개 스캔 중   ',
+                              style: lastUpdateTextStyle(context)),
+                        ],
+                      )),
+                  Expanded(
                       flex: 40,
                       child: Container(
-                          margin: EdgeInsets.only(
-                              top: MediaQuery.of(context).size.width * 0.035),
+                          // margin: EdgeInsets.only(
+                          //     top: MediaQuery.of(context).size.width * 0.035),
                           width: MediaQuery.of(context).size.width * 0.98,
                           // height:
                           //     MediaQuery.of(context).size.width * 0.45,
@@ -1433,17 +1452,24 @@ class ScanscreenState extends State<Scanscreen> {
       return Container(
         width: MediaQuery.of(context).size.width,
         height: MediaQuery.of(context).size.height,
-        color: Colors.white,
+        color: Color.fromRGBO(15, 116, 187, 1),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Text(
-              resultText,
+              deviceList.length.toString() + '개 스캔 중',
               style: TextStyle(
                   fontSize: MediaQuery.of(context).size.width / 18,
-                  color: Colors.black),
-            ),
+                  color: Colors.white,
+                  decoration: TextDecoration.none),
+            )
+            // Text(
+            //   resultText,
+            //   style: TextStyle(
+            //       fontSize: MediaQuery.of(context).size.width / 18,
+            //       color: Colors.black),
+            // ),
           ],
         ),
       );
@@ -1614,14 +1640,27 @@ class ScanscreenState extends State<Scanscreen> {
   }
 
   getCurrentLocation() async {
+    location = new loc.Location();
     bool _serviceEnabled;
     loc.PermissionStatus _permissionGranted;
     loc.LocationData _locationData;
-    _serviceEnabled = await location.serviceEnabled();
-    if (!_serviceEnabled) {
-      _serviceEnabled = await location.requestService();
+    try {
+      _serviceEnabled = await location.serviceEnabled();
       if (!_serviceEnabled) {
-        return;
+        _serviceEnabled = await location.requestService();
+        if (!_serviceEnabled) {
+          print('error?');
+          return;
+        }
+      }
+    } catch (e) {
+      _serviceEnabled = await location.serviceEnabled();
+      if (!_serviceEnabled) {
+        _serviceEnabled = await location.requestService();
+        if (!_serviceEnabled) {
+          print('error?');
+          return;
+        }
       }
     }
 
@@ -1632,7 +1671,7 @@ class ScanscreenState extends State<Scanscreen> {
         return;
       }
     }
-    // location.enableBackgroundMode(enable: true);
+    location.enableBackgroundMode(enable: false);
     _locationData = await location.getLocation();
     print('lng: ' + _locationData.longitude.toString());
     print('lat: ' + _locationData.latitude.toString());
@@ -1641,8 +1680,8 @@ class ScanscreenState extends State<Scanscreen> {
     });
 
     location.onLocationChanged.listen((loc.LocationData tempcurrentLocation) {
-      // print('lng: ' + _locationData.longitude.toString());
-      // print('lat: ' + tempcurrentLocation.latitude.toString());
+      print('lng: ' + tempcurrentLocation.longitude.toString());
+      print('lat: ' + tempcurrentLocation.latitude.toString());
       setState(() {
         currentLocation = tempcurrentLocation;
       });
@@ -1759,10 +1798,7 @@ showMyDialog_Connecting(BuildContext context) {
   );
 }
 
-showMyDialog_end(
-  BuildContext context,
-  String devicename,
-) {
+showMyDialog_end(BuildContext context, String destName, String devicename) {
   DateTime now = DateTime.now().toLocal();
   return showDialog(
     // barrierDismissible: false,
@@ -1774,97 +1810,112 @@ showMyDialog_end(
         backgroundColor: Color.fromRGBO(0x61, 0xB2, 0xD0, 1),
         elevation: 16.0,
         child: Container(
-            width: MediaQuery.of(context).size.width / 3,
-            height: MediaQuery.of(context).size.height / 4,
-            padding: EdgeInsets.all(10.0),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
+          width: MediaQuery.of(context).size.width / 3,
+          height: MediaQuery.of(context).size.height / 4,
+          padding: EdgeInsets.all(10.0),
+          child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                InkWell(
-                    onTap: () async {
-                      Socket socket =
-                          await Socket.connect('175.126.232.236', 9982);
-                      if (socket != null) {
-                        String body = '';
-                        body += devicename +
-                            '||' +
-                            now.toString() +
-                            '|' +
-                            now.toString() +
-                            '||' +
-                            '||' +
-                            '|' +
-                            '9999|' +
-                            '9999||||' +
-                            '|1'
-                                ';';
-                        socket.write(body);
-                        print('connected server & Sended to server');
-                        socket.close();
-                        Navigator.of(context).pop('success');
-                      } else {
-                        print('Fail Send to Server');
-                        Navigator.of(context).pop('fail');
-                      }
-                    },
-                    child: Container(
-                      padding: EdgeInsets.all(8),
-                      margin: EdgeInsets.only(bottom: 4),
-                      color: Colors.white,
-                      alignment: Alignment.center,
-                      child: Text(
-                        '운송완료',
-                        style: TextStyle(
-                          fontSize: 20,
-                          color: Color.fromRGBO(21, 21, 21, 1),
-                          fontWeight: FontWeight.w800,
+                Container(
+                  padding: EdgeInsets.all(8),
+                  color: Colors.white,
+                  alignment: Alignment.center,
+                  child: Text(destName + ' ' + devicename),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    InkWell(
+                      onTap: () async {
+                        Socket socket =
+                            await Socket.connect('175.126.232.236', 9982);
+                        if (socket != null) {
+                          String body = '';
+                          body += devicename +
+                              '||' +
+                              now.toString() +
+                              '|' +
+                              now.toString() +
+                              '||' +
+                              '||' +
+                              '|' +
+                              '9999|' +
+                              '9999||||' +
+                              '|2'
+                                  ';';
+                          socket.write(body);
+                          print('connected server & Sended to server');
+                          socket.close();
+                          Navigator.of(context).pop('return');
+                        } else {
+                          print('Fail Send to Server');
+                          Navigator.of(context).pop('fail');
+                        }
+                      },
+                      child: Container(
+                        width: MediaQuery.of(context).size.width / 4,
+                        height: MediaQuery.of(context).size.width / 4,
+                        padding: EdgeInsets.all(8),
+                        color: Colors.red,
+                        alignment: Alignment.center,
+                        child: Text(
+                          '회송',
+                          style: TextStyle(
+                            fontSize: 20,
+                            color: Color.fromRGBO(244, 244, 244, 1),
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                    )),
-                InkWell(
-                  onTap: () async {
-                    Socket socket =
-                        await Socket.connect('175.126.232.236', 9982);
-                    if (socket != null) {
-                      String body = '';
-                      body += devicename +
-                          '||' +
-                          now.toString() +
-                          '|' +
-                          now.toString() +
-                          '||' +
-                          '||' +
-                          '|' +
-                          '9999|' +
-                          '9999||||' +
-                          '|2'
-                              ';';
-                      socket.write(body);
-                      print('connected server & Sended to server');
-                      socket.close();
-
-                      Navigator.of(context).pop('return');
-                    } else {
-                      print('Fail Send to Server');
-                      Navigator.of(context).pop('fail');
-                    }
-                  },
-                  child: Container(
-                    padding: EdgeInsets.all(8),
-                    color: Colors.white,
-                    alignment: Alignment.center,
-                    child: Text(
-                      '회송',
-                      style: TextStyle(
-                        fontSize: 20,
-                        color: Color.fromRGBO(21, 21, 21, 1),
-                        fontWeight: FontWeight.w800,
-                      ),
                     ),
-                  ),
+                    InkWell(
+                        onTap: () async {
+                          Socket socket =
+                              await Socket.connect('175.126.232.236', 9982);
+                          if (socket != null) {
+                            String body = '';
+                            body += devicename +
+                                '||' +
+                                now.toString() +
+                                '|' +
+                                now.toString() +
+                                '||' +
+                                '||' +
+                                '|' +
+                                '9999|' +
+                                '9999||||' +
+                                '|1'
+                                    ';';
+                            socket.write(body);
+                            print('connected server & Sended to server');
+                            socket.close();
+                            Navigator.of(context).pop('success');
+                          } else {
+                            print('Fail Send to Server');
+                            Navigator.of(context).pop('fail');
+                          }
+                        },
+                        child: Container(
+                          width: MediaQuery.of(context).size.width / 4,
+                          height: MediaQuery.of(context).size.width / 4,
+                          padding: EdgeInsets.all(8),
+                          margin: EdgeInsets.only(bottom: 4),
+                          color: Colors.green,
+                          alignment: Alignment.center,
+                          child: Text(
+                            // 색상 변환 -> 회 완료
+                            '운송완료',
+                            style: TextStyle(
+                              fontSize: 20,
+                              color: Color.fromRGBO(244, 244, 244, 1),
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        )),
+                  ],
                 )
-              ],
-            )),
+              ]),
+        ),
       );
     },
   );

@@ -29,26 +29,25 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.2
   flutter_ble_lib: ^2.3.2
-  permission_handler: ^5.0.0+hotfix.3
-  http: ^0.12.2
-  location: ^3.0.0
-  geocoder: ^0.2.1
+  permission_handler: ^8.1.4+2
+  http: ^0.13.3
+  location: ^4.2.0
   intl: ^0.15.7
-  toggle_switch: ^0.1.8
-  camera: ^0.5.8+17
-  path_provider: ^1.6.27
+  # toggle_switch: ^0.1.8
+  # camera: ^0.5.8+17
+  path_provider: ^2.0.2
   path: ^1.7.0
-  syncfusion_flutter_charts: ^18.4.44
-  tab_indicator_styler: ^1.0.0
+  # syncfusion_flutter_charts: ^18.4.44
+  # tab_indicator_styler: ^1.0.0
   sqflite: ^2.0.0+3
-  numberpicker: ^2.1.1
+  # numberpicker: ^2.1.1
   pdf: ^2.1.0
-  screenshot: ^1.2.1
-  downloads_path_provider: ^0.1.0
-  esys_flutter_share: ^1.0.2
+  # screenshot: ^1.2.1
+  # downloads_path_provider: ^0.1.0
+  # esys_flutter_share: ^1.0.2
   wakelock: ^0.5.2
   flutter_android_pip: ^0.0.2
-  background_location: ^0.6.1
+  # background_location: ^0.6.1
 
 
 dev_dependencies:
@@ -62,7 +61,7 @@ dev_dependencies:
 flutter:
 
   # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
+  # included with your application, so that you can use the icons in  
   # the material Icons class.
   uses-material-design: true
 
