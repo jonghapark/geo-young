@@ -47,6 +47,7 @@ class ScanscreenState extends State<Scanscreen> {
   String geolocation;
   String currentDeviceName = '';
   String errorResult = '';
+  String beforePhoneNumber = '';
   Timer _timer;
   int _start = 0;
   bool isStart = false;
@@ -118,7 +119,7 @@ class ScanscreenState extends State<Scanscreen> {
             ));
   }
 
-  Future<void> _showNotification(String devicename) async {
+  Future<void> _showNotification(String devicename, String destName) async {
     var android = AndroidNotificationDetails('geo_young_channel',
         'geo_young_channel', 'this is geo_young push channel',
         importance: Importance.max, priority: Priority.high);
@@ -128,8 +129,8 @@ class ScanscreenState extends State<Scanscreen> {
 
     await _flutterLocalNotificationsPlugin.show(
       Random().nextInt(1000),
-      '온도 이탈 알림',
-      '[ ' + devicename + ' ] 적정 온도를 이탈했습니다.',
+      '🚨 온도 이탈 알림 🚨',
+      destName + ' [ ' + devicename + ' ] 적정 온도를 이탈했습니다.',
       detail,
       payload: 'Hello Flutter',
     );
@@ -143,6 +144,7 @@ class ScanscreenState extends State<Scanscreen> {
     phoneNumber += temp.substring(3, 7);
     phoneNumber += '-';
     phoneNumber += temp.substring(7, 11);
+
     // TODO: 배송중 회송
     try {
       var client = http.Client();
@@ -160,6 +162,7 @@ class ScanscreenState extends State<Scanscreen> {
       if (uriResponse.statusCode == 200) {
         setState(() {
           userList = list;
+
           // print(userList.userDevices[0].destName);
           // print(userList.userDevices[1].destName);
           // print(userList.userDevices[1].deviceName);
@@ -180,8 +183,11 @@ class ScanscreenState extends State<Scanscreen> {
           //     destName: '굿 병원_1'));
           beforeInit = false;
         });
-        startTimer();
-        init();
+        if (beforePhoneNumber == '') {
+          startTimer();
+          init();
+          beforePhoneNumber = phoneNumber;
+        }
       } else {
         setState(() {
           errorResult = '다시 시도해주세요';
@@ -206,7 +212,7 @@ class ScanscreenState extends State<Scanscreen> {
   }
 
   Future<String> sendtoServer(List<LogData> list, String devicename,
-      int battery, String device_Name) async {
+      int battery, String device_Name, int state, String destName) async {
     // var client = http.Client();
     // print(socket.port);
     Socket socket = await Socket.connect('175.126.232.236', 9982);
@@ -230,15 +236,16 @@ class ScanscreenState extends State<Scanscreen> {
             list[i].humidity.toString() +
             '|0|0|0|' +
             battery.toString() +
-            '|3'
-                ';';
+            '|' +
+            state.toString() +
+            ';';
 
         socket.write(body);
       }
       print('connected server & Sended to server');
       socket.close();
       if (isOver) {
-        await _showNotification(device_Name);
+        await _showNotification(device_Name, destName);
       }
       return 'success';
     } else {
@@ -409,7 +416,9 @@ class ScanscreenState extends State<Scanscreen> {
               deviceList[index].logDatas,
               'SENSOR_' + deviceList[index].getserialNumber(),
               deviceList[index].getBattery(),
-              deviceList[index].deviceName);
+              deviceList[index].deviceName,
+              deviceList[index].status,
+              deviceList[index].destName);
 
           // 전송 결과
           // print(temp.body);
@@ -558,6 +567,7 @@ class ScanscreenState extends State<Scanscreen> {
           // if (_start % 5 == 0) {
           print('현재 몇번 돌았니 ? -> ' + _start.toString());
           _bleManager.stopPeripheralScan();
+
           Timer temp = new Timer.periodic(
             fiveSec,
             (Timer timer) => setState(
@@ -576,6 +586,7 @@ class ScanscreenState extends State<Scanscreen> {
 
           _bleManager.stopPeripheralScan();
           _isScanning = false;
+          getDeviceList();
           scan();
         },
       ),
@@ -712,7 +723,11 @@ class ScanscreenState extends State<Scanscreen> {
                         currentItem.destName = userList.userDevices[k].destName;
                         currentItem.deviceName =
                             userList.userDevices[k].deviceName;
-                        currentItem.status = userList.userDevices[k].status;
+                        if (userList.userDevices[k].status == 0) {
+                          currentItem.status = 3;
+                        } else {
+                          currentItem.status = userList.userDevices[k].status;
+                        }
                         setState(() {
                           deviceList.add(currentItem);
                           deviceList
@@ -1127,7 +1142,10 @@ class ScanscreenState extends State<Scanscreen> {
                           ),
                           padding: EdgeInsets.all(8),
                           alignment: Alignment.center,
-                          child: Text(deviceList[index].destName,
+                          child: Text(
+                              deviceList[index].status == 2
+                                  ? deviceList[index].destName + ' (회송)'
+                                  : deviceList[index].destName,
                               style: boldTextStyle),
                         )),
                     Expanded(
@@ -1148,7 +1166,7 @@ class ScanscreenState extends State<Scanscreen> {
                                   deviceList[index].destName,
                                   // 'SENSOR_' +
                                   deviceList[index].deviceName,
-                                  'TESTSENSOR_' +
+                                  'SENSOR_' +
                                       deviceList[index].getserialNumber());
                               if (result == 'success') {
                                 for (int k = 0;
@@ -1168,13 +1186,13 @@ class ScanscreenState extends State<Scanscreen> {
                               } else if (result == 'return') {
                                 deviceList[index].status = 2;
 
-                                if (deviceList[index].destName.substring(
-                                        deviceList[index].destName.length -
-                                            2) !=
-                                    '송)')
-                                  setState(() {
-                                    deviceList[index].destName += ' (회송)';
-                                  });
+                                // if (deviceList[index].destName.substring(
+                                //         deviceList[index].destName.length -
+                                //             2) !=
+                                //     '송)')
+                                //   setState(() {
+                                //     deviceList[index].destName += ' (회송)';
+                                //   });
                               } else if (result == 'retrans') {
                                 setState(() {
                                   deviceList[index].status = 3;
@@ -1388,12 +1406,12 @@ class ScanscreenState extends State<Scanscreen> {
                       crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
-                          flex: 4,
+                          flex: 5,
                           child: Image(
                             image: AssetImage('images/geo_young.png'),
                             fit: BoxFit.contain,
-                            width: MediaQuery.of(context).size.width * 0.20,
-                            // height: 70,
+                            // width: MediaQuery.of(context).size.width * 0.20,
+                            height: 60,
                           ),
                         ),
                         Expanded(
@@ -1549,7 +1567,7 @@ class ScanscreenState extends State<Scanscreen> {
             Text(
               deviceList.length.toString() + '개 스캔 중',
               style: TextStyle(
-                  fontSize: MediaQuery.of(context).size.width / 18,
+                  fontSize: MediaQuery.of(context).size.width / 11,
                   color: Colors.white,
                   decoration: TextDecoration.none),
             )
@@ -1978,7 +1996,7 @@ showMyDialog_end(
         backgroundColor: Color.fromRGBO(0x61, 0xB2, 0xD0, 1),
         elevation: 16.0,
         child: Container(
-          width: MediaQuery.of(context).size.width / 3,
+          width: MediaQuery.of(context).size.width / 2,
           height: MediaQuery.of(context).size.height / 4,
           padding: EdgeInsets.all(10.0),
           child: Column(
