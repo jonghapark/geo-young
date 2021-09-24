@@ -215,6 +215,9 @@ class ScanscreenState extends State<Scanscreen> {
       int battery, String device_Name, int state, String destName) async {
     // var client = http.Client();
     // print(socket.port);
+    // TODO: 9984 에 GPS 정보 전송
+    // TODO: 위치정보 존 번호 전송.
+
     Socket socket = await Socket.connect('175.126.232.236', 9982);
     if (socket != null) {
       bool isOver = false;
@@ -556,7 +559,7 @@ class ScanscreenState extends State<Scanscreen> {
   // 00:00:00
   void startTimer() {
     if (isStart == true) return;
-    const oneSec = const Duration(minutes: 30);
+    const oneSec = const Duration(minutes: 10);
     const fiveSec = const Duration(seconds: 5);
     _timer = new Timer.periodic(
       oneSec,
@@ -1605,13 +1608,14 @@ class ScanscreenState extends State<Scanscreen> {
         width: MediaQuery.of(context).size.width * 0.08,
         height: MediaQuery.of(context).size.width * 0.08,
       );
-    } else if (battery >= 15)
+    } else {
       return Image(
         image: AssetImage('images/battery_25.png'),
         fit: BoxFit.contain,
         width: MediaQuery.of(context).size.width * 0.08,
         height: MediaQuery.of(context).size.width * 0.08,
       );
+    }
   }
 
   TextStyle lastUpdateTextStyle(BuildContext context) {
