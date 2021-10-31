@@ -50,7 +50,9 @@ class ScanscreenState extends State<Scanscreen> {
   String beforePhoneNumber = '';
   Timer _timer;
   int _start = 0;
+  int _start2 = 0;
   bool isStart = false;
+  bool isStart2 = false;
   Map<String, String> idMapper;
   // double width;
   TextEditingController _textFieldController;
@@ -61,6 +63,7 @@ class ScanscreenState extends State<Scanscreen> {
   Future<List<DeviceInfo>> _allDeviceTemp;
   UserDeviceList userList;
 
+  List<String> resultListTexts = [];
   var _flutterLocalNotificationsPlugin;
 
   // Future<List<DateTime>> allDatetime;
@@ -71,13 +74,13 @@ class ScanscreenState extends State<Scanscreen> {
 
   String strMapper(String input) {
     if (input == 'scan') {
-      return '대기 중';
+      return '데이터 전송 대기중';
     } else if (input == 'connecting') {
-      return '연결 중';
+      return '온도센서 연결중';
     } else if (input == 'end') {
-      return '전송 완료';
+      return '데이터 전송완료';
     } else if (input == 'connect') {
-      return '데이터 전송 중';
+      return '데이터 전송중';
     } else
       return '';
   }
@@ -94,6 +97,7 @@ class ScanscreenState extends State<Scanscreen> {
     currentDeviceName = '';
     currentTemp = '-';
     currentHumi = '-';
+
     setState(() {
       getCurrentLocation();
     });
@@ -185,6 +189,7 @@ class ScanscreenState extends State<Scanscreen> {
         });
         if (beforePhoneNumber == '') {
           startTimer();
+          startGPSTimer(phoneNumber);
           init();
           beforePhoneNumber = phoneNumber;
         }
@@ -213,11 +218,6 @@ class ScanscreenState extends State<Scanscreen> {
 
   Future<String> sendtoServer(List<LogData> list, String devicename,
       int battery, String device_Name, int state, String destName) async {
-    // var client = http.Client();
-    // print(socket.port);
-    // TODO: 9984 에 GPS 정보 전송
-    // TODO: 위치정보 존 번호 전송.
-
     Socket socket = await Socket.connect('175.126.232.236', 9982);
     if (socket != null) {
       bool isOver = false;
@@ -255,32 +255,36 @@ class ScanscreenState extends State<Scanscreen> {
       print('Fail Send to Server');
       return 'fail';
     }
+  }
 
-    // try {
-    //   for (int i = 0; i < list.length; i++) {
-    //     print('$i send');
-    //     var uriResponse = await client
-    //         .post('http://175.126.232.236/_API/saveData.php', body: {
-    //       "isRegularData": "true",
-    //       "tra_datetime": list[i].timestamp.toString(),
-    //       "tra_temp": list[i].temperature.toString(),
-    //       "tra_humidity": list[i].humidity.toString(),
-    //       "tra_lat": "",
-    //       "tra_lon": "",
-    //       "de_number": devicename,
-    //       "tra_battery": battery.toString(),
-    //       "tra_impact": ""
-    //     });
-    //     print(await client.get(uriResponse.body.toString()));
-    //   }
-    // } catch (e) {
-    //   print('HTTP에러발생에러발생에러발생에러발생에러발생에러발생');
-    //   print(e);
-    //   return null;
-    // } finally {
-    //   print('send !');
-    //   client.close();
-    // }
+  Future<String> sendGPStoServer(String phoneNumber) async {
+    // var client = http.Client();
+    // print(socket.port);
+    // TODO: 9984 에 GPS 정보 전송
+
+    print(currentLocation.latitude.toString() +
+        '|' +
+        currentLocation.longitude.toString());
+    Socket socket = await Socket.connect('175.126.232.236', 9982);
+    if (socket != null) {
+      String body = '';
+      body += phoneNumber +
+          '||||| ' +
+          currentLocation.latitude.toString() +
+          '||' +
+          currentLocation.longitude.toString() +
+          ';';
+      socket.write(body);
+      print('connected server & Sended GPS to server');
+      print(currentLocation.latitude.toString() +
+          '|' +
+          currentLocation.longitude.toString());
+      socket.close();
+      return 'success';
+    } else {
+      print('Fail Send to Server');
+      return 'fail';
+    }
   }
 
   Future<void> monitorCharacteristic(BleDeviceItem device, flag) async {
@@ -451,11 +455,17 @@ class ScanscreenState extends State<Scanscreen> {
             setState(() {
               deviceList[index].connectionState = 'end';
               resultText = '[' +
-                  deviceList[index].getserialNumber() +
+                  deviceList[index].destName +
                   '] ' +
                   sendCount.toString() +
                   ' 개(분) 전송 완료';
             });
+            if (resultListTexts.length > 9) {
+              resultListTexts.removeAt(0);
+              resultListTexts.add(resultText);
+            } else {
+              resultListTexts.add(resultText);
+            }
           } else {
             setState(() {
               resultText = '[전송 실패] 네트워크 상태를 확인해주세요 !!';
@@ -559,7 +569,7 @@ class ScanscreenState extends State<Scanscreen> {
   // 00:00:00
   void startTimer() {
     if (isStart == true) return;
-    const oneSec = const Duration(minutes: 10);
+    const oneSec = const Duration(minutes: 5);
     const fiveSec = const Duration(seconds: 5);
     _timer = new Timer.periodic(
       oneSec,
@@ -591,6 +601,22 @@ class ScanscreenState extends State<Scanscreen> {
           _isScanning = false;
           getDeviceList();
           scan();
+        },
+      ),
+    );
+  }
+
+// GPS 5분에 한 번씩 전송 !
+  void startGPSTimer(String phoneNumber) {
+    if (isStart2 == true) return;
+    const sendGPSDuration = const Duration(minutes: 5);
+    _timer = new Timer.periodic(
+      sendGPSDuration,
+      (Timer timer) => setState(
+        () {
+          if (isStart2 == false) isStart2 = true;
+          _start2 = _start2 + 1;
+          sendGPStoServer(phoneNumber);
         },
       ),
     );
@@ -829,7 +855,7 @@ class ScanscreenState extends State<Scanscreen> {
         deviceList[index].lastUpdateTime = null;
       });
     } else {
-      print('Else 문 ?');
+      // print('Else 문 ?');
       setState(() {
         deviceList[index].lastUpdateTime = temp.lastUpdate.toLocal();
       });
@@ -1285,12 +1311,12 @@ class ScanscreenState extends State<Scanscreen> {
                                     children: [
                                       Text(
                                           deviceList[index].status == 1
-                                              ? '운송완료'
+                                              ? '데이터 전송완료'
                                               : strMapper(deviceList[index]
                                                   .connectionState),
                                           style: strMapper(deviceList[index]
                                                       .connectionState) ==
-                                                  '대기 중'
+                                                  '데이터 전송 대기중'
                                               ? noboldTextStyle
                                               : redBoldTextStyle),
                                       Row(
@@ -1432,9 +1458,21 @@ class ScanscreenState extends State<Scanscreen> {
                               ]),
                         ),
                         Expanded(
-                          flex: 4,
-                          child: SizedBox(),
-                        ),
+                            flex: 4,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                InkWell(
+                                  onTap: () {
+                                    showSendingList(context, resultListTexts);
+                                  },
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 30,
+                                  ),
+                                )
+                              ],
+                            )),
                       ],
                     )),
                   ],
@@ -1479,7 +1517,7 @@ class ScanscreenState extends State<Scanscreen> {
                           ? Expanded(
                               flex: 5,
                               child: Container(
-                                  color: Color.fromRGBO(200, 200, 200, 1),
+                                  color: Color.fromRGBO(200, 200, 200, 0),
                                   // padding: EdgeInsets.only(
                                   //   bottom: MediaQuery.of(context).size.width * 0.015,
                                   // ),
@@ -1500,10 +1538,10 @@ class ScanscreenState extends State<Scanscreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.center,
                                     children: [
-                                      Text(
-                                        resultText,
-                                        style: boldTextStyle,
-                                      ),
+                                      // Text(
+                                      //   resultText,
+                                      //   style: boldTextStyle,
+                                      // ),
                                       FloatingActionButton(
                                         onPressed: () {
                                           FlutterAndroidPip
@@ -1586,6 +1624,119 @@ class ScanscreenState extends State<Scanscreen> {
     }
   }
 
+  showSendingList(BuildContext context, List<String> listItem) {
+    return showDialog(
+      barrierDismissible: false,
+      context: context,
+      builder: (context) {
+        return Dialog(
+            shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20.0)),
+            backgroundColor: Color.fromRGBO(20, 20, 20, 0),
+            // elevation: 16.0,
+            child: Container(
+                width: MediaQuery.of(context).size.width * 0.95,
+                height: MediaQuery.of(context).size.height * 0.75,
+                padding: EdgeInsets.all(10.0),
+                child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Expanded(
+                          flex: 1,
+                          child: Container(
+                            width: MediaQuery.of(context).size.width * 0.9,
+                            decoration: BoxDecoration(
+                                color: Colors.green,
+                                //boxShadow: [customeBoxShadow()],
+                                borderRadius: BorderRadius.only(
+                                    topLeft: Radius.circular(15),
+                                    topRight: Radius.circular(15))),
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                Text("최근 업로드 목록",
+                                    style: TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w600,
+                                        fontSize: 18),
+                                    textAlign: TextAlign.center),
+                              ],
+                            ),
+                          )),
+                      Expanded(
+                        flex: 8,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Color.fromRGBO(200, 200, 200, 1),
+                          ),
+                          // borderRadius: BorderRadius.only(
+                          //     bottomLeft: Radius.circular(15),
+                          //     bottomRight: Radius.circular(15))),
+                          width: MediaQuery.of(context).size.width * 0.95,
+                          child: ListView.separated(
+                            padding: const EdgeInsets.all(8),
+                            itemCount: listItem.length,
+                            itemBuilder: (BuildContext context, int index) {
+                              // print(deviceList[index].getserialNumber());
+                              return Container(
+                                padding: EdgeInsets.symmetric(vertical: 6),
+                                decoration: BoxDecoration(
+                                    color: Colors.white,
+                                    borderRadius:
+                                        BorderRadius.all(Radius.circular(5))),
+                                child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      index == listItem.length - 1
+                                          ? Text(
+                                              listItem[index],
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 19),
+                                            )
+                                          : Text(
+                                              listItem[index],
+                                              style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  fontSize: 16),
+                                            ),
+                                    ]),
+                              );
+                            },
+                            separatorBuilder:
+                                (BuildContext context, int index) {
+                              return Divider();
+                            },
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                          flex: 1,
+                          child: Container(
+                              decoration: BoxDecoration(
+                                  color: Color.fromRGBO(200, 200, 200, 1),
+                                  borderRadius: BorderRadius.only(
+                                      bottomLeft: Radius.circular(15),
+                                      bottomRight: Radius.circular(15))),
+                              width: MediaQuery.of(context).size.width * 0.95,
+                              child: FloatingActionButton(
+                                elevation: 0,
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.green,
+                                onPressed: () {
+                                  Navigator.of(context).pop();
+                                },
+                                child: Icon(
+                                  Icons.cancel,
+                                  size: 35,
+                                  color: Colors.white,
+                                ),
+                              )))
+                    ])));
+      },
+    );
+  }
+
   Widget getbatteryImage(int battery) {
     if (battery >= 75) {
       return Image(
@@ -1655,7 +1806,7 @@ class ScanscreenState extends State<Scanscreen> {
     fontWeight: FontWeight.w800,
   );
   TextStyle noboldTextStyle = TextStyle(
-    fontSize: 22,
+    fontSize: 21,
     color: Color.fromRGBO(21, 21, 21, 1),
     fontWeight: FontWeight.w700,
   );
