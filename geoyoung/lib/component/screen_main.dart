@@ -88,19 +88,18 @@ class ScanscreenState extends State<Scanscreen> {
   @override
   void initState() {
     // _allDeviceTemp = DBHelper().getAllDevices();
+    // ();
     super.initState();
     _textFieldController = TextEditingController(text: '');
 
     // getDeviceList();
     Wakelock.enable();
-
+    // location =
+// getCurrentLocation();
     currentDeviceName = '';
     currentTemp = '-';
     currentHumi = '-';
 
-    setState(() {
-      getCurrentLocation();
-    });
     var initializationSettingsAndroid =
         AndroidInitializationSettings('@mipmap/ic_launcher');
     // var initializationSettingsIOS = IOSInitializationSettings();
@@ -152,7 +151,7 @@ class ScanscreenState extends State<Scanscreen> {
     // TODO: 배송중 회송
     try {
       var client = http.Client();
-      var uri = Uri.parse('http://175.126.232.236:8987/bb');
+      var uri = Uri.parse('http://175.126.232.236:8985/bb');
       var uriResponse = await client.post(uri,
           headers: {"Content-Type": "application/x-www-form-urlencoded"},
           body: {"ZONE_NM": phoneNumber});
@@ -645,6 +644,7 @@ class ScanscreenState extends State<Scanscreen> {
     if (Platform.isAndroid) {
       if (await Permission.location.request().isGranted) {
         print('입장하냐?');
+        await getCurrentLocation();
         scan();
         return;
       }
@@ -652,7 +652,8 @@ class ScanscreenState extends State<Scanscreen> {
           await [Permission.location].request();
       if (statuses[Permission.location].toString() ==
           "PermissionStatus.granted") {
-        //getCurrentLocation();
+        // ???
+        await getCurrentLocation();
         scan();
       }
     } else {
@@ -840,6 +841,9 @@ class ScanscreenState extends State<Scanscreen> {
     //   });
     //   return false;
     // }
+    if (currentState == 'connected') {
+      return;
+    }
 
     //선택한 장치의 peripheral 값을 가져온다.
     Peripheral peripheral = deviceList[index].peripheral;
@@ -907,6 +911,7 @@ class ScanscreenState extends State<Scanscreen> {
             if (tempIndex != -1) {
               //FIXME: 여기 setState 문제가 있을 수 있네??
               setState(() {
+                currentState = 'connect';
                 deviceList[tempIndex].connectionState = 'connect';
               });
             }
@@ -1429,52 +1434,53 @@ class ScanscreenState extends State<Scanscreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     AppBar(
-                        // backgroundColor: Color.fromARGB(22, 27, 32, 1),
+                        backgroundColor: Color.fromRGBO(0x4C, 0xA5, 0xC7, 1),
                         title: Row(
-                      mainAxisAlignment: MainAxisAlignment.start,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          flex: 5,
-                          child: Image(
-                            image: AssetImage('images/geo_young.png'),
-                            fit: BoxFit.contain,
-                            // width: MediaQuery.of(context).size.width * 0.20,
-                            height: 60,
-                          ),
-                        ),
-                        Expanded(
-                          flex: 8,
-                          child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Image(
-                                  image: AssetImage('images/logos.png'),
-                                  fit: BoxFit.contain,
-                                  width:
-                                      MediaQuery.of(context).size.width * 0.4,
-                                  // height: MediaQuery.of(context).size.width * 0.1,
-                                ),
-                              ]),
-                        ),
-                        Expanded(
-                            flex: 4,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                InkWell(
-                                  onTap: () {
-                                    showSendingList(context, resultListTexts);
-                                  },
-                                  child: Icon(
-                                    Icons.add,
-                                    size: 30,
-                                  ),
-                                )
-                              ],
-                            )),
-                      ],
-                    )),
+                          mainAxisAlignment: MainAxisAlignment.start,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              flex: 5,
+                              child: Image(
+                                image: AssetImage('images/geo_young.png'),
+                                fit: BoxFit.contain,
+                                // width: MediaQuery.of(context).size.width * 0.20,
+                                height: 60,
+                              ),
+                            ),
+                            Expanded(
+                              flex: 8,
+                              child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Image(
+                                      image: AssetImage('images/logos.png'),
+                                      fit: BoxFit.contain,
+                                      width: MediaQuery.of(context).size.width *
+                                          0.4,
+                                      // height: MediaQuery.of(context).size.width * 0.1,
+                                    ),
+                                  ]),
+                            ),
+                            Expanded(
+                                flex: 4,
+                                child: Row(
+                                  mainAxisAlignment: MainAxisAlignment.end,
+                                  children: [
+                                    InkWell(
+                                      onTap: () {
+                                        showSendingList(
+                                            context, resultListTexts);
+                                      },
+                                      child: Icon(
+                                        Icons.add,
+                                        size: 30,
+                                      ),
+                                    )
+                                  ],
+                                )),
+                          ],
+                        )),
                   ],
                 )),
             body: WillPopScope(
@@ -1906,44 +1912,64 @@ class ScanscreenState extends State<Scanscreen> {
     bool _serviceEnabled;
     loc.PermissionStatus _permissionGranted;
     loc.LocationData _locationData;
-    try {
-      _serviceEnabled = await location.serviceEnabled();
-      if (!_serviceEnabled) {
-        _serviceEnabled = await location.requestService();
-        if (!_serviceEnabled) {
-          print('error?');
-          return;
-        }
-      }
-    } catch (e) {
-      _serviceEnabled = await location.serviceEnabled();
-      if (!_serviceEnabled) {
-        _serviceEnabled = await location.requestService();
-        if (!_serviceEnabled) {
-          print('error?');
-          return;
-        }
-      }
-    }
+    // _serviceEnabled = await location.serviceEnabled();
+    // if (!_serviceEnabled) {
+    //   _serviceEnabled = await location.requestService();
+    //   if (!_serviceEnabled) {
+    //     return;
+    //   }
+    // }
 
-    _permissionGranted = await location.hasPermission();
-    if (_permissionGranted == loc.PermissionStatus.denied) {
-      _permissionGranted = await location.requestPermission();
-      if (_permissionGranted != loc.PermissionStatus.granted) {
-        return;
-      }
-    }
-    location.enableBackgroundMode(enable: false);
-    _locationData = await location.getLocation();
-    // print('lng: ' + _locationData.longitude.toString());
-    // print('lat: ' + _locationData.latitude.toString());
-    setState(() {
-      currentLocation = _locationData;
-    });
+    // _permissionGranted = await location.hasPermission();
+    // if (_permissionGranted == PermissionStatus.denied) {
+    //   _permissionGranted = await location.requestPermission();
+    //   if (_permissionGranted != PermissionStatus.granted) {
+    //     return;
+    //   }
+    // }
+
+    // _locationData = await location.getLocation();
+    // // bool _serviceEnabled;
+    // // loc.PermissionStatus _permissionGranted;
+    // // loc.LocationData _locationData;
+    // // try {
+    // //   _serviceEnabled = await location.serviceEnabled();
+    // //   if (!_serviceEnabled) {
+    // //     _serviceEnabled = await location.requestService();
+    // //     if (!_serviceEnabled) {
+    // //       print('error?');
+    // //       return;
+    // //     }
+    // //   }
+    // // } catch (e) {
+    // //   _serviceEnabled = await location.serviceEnabled();
+    // //   if (!_serviceEnabled) {
+    // //     _serviceEnabled = await location.requestService();
+    // //     if (!_serviceEnabled) {
+    // //       print('error?');
+    // //       return;
+    // //     }
+    // //   }
+    // // }
+
+    // // _permissionGranted = await location.hasPermission();
+    // // if (_permissionGranted == loc.PermissionStatus.denied) {
+    // //   _permissionGranted = await location.requestPermission();
+    // //   if (_permissionGranted != loc.PermissionStatus.granted) {
+    // //     return;
+    // //   }
+    // // }
+    // // location.enableBackgroundMode(enable: false);
+    // _locationData = await location.getLocation();
+    // // print('lng: ' + _locationData.longitude.toString());
+    // // print('lat: ' + _locationData.latitude.toString());
+    // setState(() {
+    //   currentLocation = _locationData;
+    // });
 
     location.onLocationChanged.listen((loc.LocationData tempcurrentLocation) {
-      // print('lng: ' + tempcurrentLocation.longitude.toString());
-      // print('lat: ' + tempcurrentLocation.latitude.toString());
+      print('lng: ' + tempcurrentLocation.longitude.toString());
+      print('lat: ' + tempcurrentLocation.latitude.toString());
       setState(() {
         currentLocation = tempcurrentLocation;
       });
