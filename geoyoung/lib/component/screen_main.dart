@@ -19,6 +19,8 @@ import '../utils/util.dart';
 import 'package:wakelock/wakelock.dart';
 import 'package:flutter_android_pip/flutter_android_pip.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:webview_flutter/webview_flutter.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class Scanscreen extends StatefulWidget {
   @override
@@ -26,6 +28,9 @@ class Scanscreen extends StatefulWidget {
 }
 
 class ScanscreenState extends State<Scanscreen> {
+  //FIXME: Current VERSION
+  final String currentVersion = "0.1.2";
+
   BleManager _bleManager = BleManager();
   bool _isScanning = false;
   bool _connected = false;
@@ -65,6 +70,9 @@ class ScanscreenState extends State<Scanscreen> {
 
   List<String> resultListTexts = [];
   var _flutterLocalNotificationsPlugin;
+
+  String downloadLink = '';
+  bool isLatest = true;
 
   // Future<List<DateTime>> allDatetime;
 
@@ -111,6 +119,30 @@ class ScanscreenState extends State<Scanscreen> {
     _flutterLocalNotificationsPlugin.initialize(initializationSettings,
         onSelectNotification: onSelectNotification);
   }
+
+  //FIXME: Current VERSION
+  Future<bool> checkCurrentAppVersion() async {
+    var client = http.Client();
+    var uri = Uri.parse('http://geo.thermocert.net:7001/version_checker');
+    var uriResponse = await client.post(uri, body: {"app_name": 'GEO_J'});
+    print(uriResponse.body);
+    List<dynamic> list = jsonDecode(uriResponse.body.substring(30));
+    print(list[0]['version']);
+    if (list[0]['version'] != currentVersion) {
+      setState(() {
+        downloadLink = list[0]['download_link'];
+        isLatest = false;
+        resultText = '최신 버전으로 업데이트가 필요합니다.';
+      });
+      if (!await launch(downloadLink)) throw 'Could not launch $downloadLink';
+    } else {
+      setState(() {
+        isLatest = true;
+      });
+    }
+    return true;
+  }
+  //
 
   Future<void> onSelectNotification(String payload) async {
     debugPrint("$payload");
@@ -1061,64 +1093,80 @@ class ScanscreenState extends State<Scanscreen> {
   }
 
   getPhoneNumber() {
-    return Container(
+    if (isLatest == true) {
+      return Container(
+          decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [customeBoxShadow()],
+              borderRadius: BorderRadius.all(Radius.circular(5))),
+          height: MediaQuery.of(context).size.height * 0.5,
+          width: MediaQuery.of(context).size.width * 0.8,
+          child: Column(
+              mainAxisAlignment: MainAxisAlignment.spaceAround,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Column(
+                  children: [
+                    Text('번호 입력\n', style: boldTextStyle3),
+                    TextField(
+                      controller: _textFieldController,
+                      decoration: InputDecoration(
+                        border: OutlineInputBorder(),
+                        labelText: '전화번호 ex) 010xxxxxxxx',
+                      ),
+                    ),
+                    InkWell(
+                      onTap: () async {
+                        String temp = '';
+                        // print(_textFieldController.text);
+                        // print(temp.toString());
+                        if (_textFieldController.text == '' ||
+                            _textFieldController.text.length != 11) {
+                          setState(() {
+                            errorResult = '전화번호를 확인해주세요. ';
+                          });
+                        } else {
+                          await getDeviceList();
+                        }
+                      },
+                      child: Container(
+                        decoration: BoxDecoration(
+                            color: Colors.black,
+                            boxShadow: [customeBoxShadow()],
+                            borderRadius: BorderRadius.all(Radius.circular(5))),
+                        width: MediaQuery.of(context).size.width * 0.98,
+                        padding: EdgeInsets.all(16),
+                        margin: EdgeInsets.only(top: 8, bottom: 8),
+                        alignment: Alignment.center,
+                        child: Text(
+                          '확인',
+                          style: TextStyle(
+                            fontSize: 24,
+                            color: Color.fromRGBO(255, 255, 255, 1),
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ),
+                    Text(errorResult),
+                  ],
+                ),
+              ]));
+    } else {
+      return Container(
         decoration: BoxDecoration(
             color: Colors.white,
             boxShadow: [customeBoxShadow()],
             borderRadius: BorderRadius.all(Radius.circular(5))),
         height: MediaQuery.of(context).size.height * 0.5,
         width: MediaQuery.of(context).size.width * 0.8,
-        child: Column(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              Column(
-                children: [
-                  Text('번호 입력\n', style: boldTextStyle3),
-                  TextField(
-                    controller: _textFieldController,
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(),
-                      labelText: '전화번호 ex) 010xxxxxxxx',
-                    ),
-                  ),
-                  InkWell(
-                    onTap: () async {
-                      String temp = '';
-                      // print(_textFieldController.text);
-                      // print(temp.toString());
-                      if (_textFieldController.text == '' ||
-                          _textFieldController.text.length != 11) {
-                        setState(() {
-                          errorResult = '전화번호를 확인해주세요. ';
-                        });
-                      } else {
-                        await getDeviceList();
-                      }
-                    },
-                    child: Container(
-                      decoration: BoxDecoration(
-                          color: Colors.black,
-                          boxShadow: [customeBoxShadow()],
-                          borderRadius: BorderRadius.all(Radius.circular(5))),
-                      width: MediaQuery.of(context).size.width * 0.98,
-                      padding: EdgeInsets.all(16),
-                      margin: EdgeInsets.only(top: 8, bottom: 8),
-                      alignment: Alignment.center,
-                      child: Text(
-                        '확인',
-                        style: TextStyle(
-                          fontSize: 24,
-                          color: Color.fromRGBO(255, 255, 255, 1),
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ),
-                  Text(errorResult),
-                ],
-              ),
-            ]));
+        child: WebView(
+          initialUrl: downloadLink,
+          javascriptMode: JavascriptMode.unrestricted,
+          initialMediaPlaybackPolicy: AutoMediaPlaybackPolicy.always_allow,
+        ),
+      );
+    }
   }
 
   //장치 화면에 출력하는 위젯 함수

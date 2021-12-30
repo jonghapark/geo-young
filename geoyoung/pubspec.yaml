@@ -48,6 +48,8 @@ dependencies:
   wakelock: ^0.5.2
   flutter_android_pip: ^0.0.2
   flutter_local_notifications: ^5.0.0+4
+  webview_flutter: ^3.0.0
+  url_launcher: ^6.0.17
   # background_location: ^0.6.1
 
 
